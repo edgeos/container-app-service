@@ -1,0 +1,9 @@
+*.o
+*.a
+*.so
+/bin
+/.go
+/.push-*
+/.container-*
+/.dockerfile-*
+/.image-*
