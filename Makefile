@@ -38,7 +38,8 @@ OS ?= linux
 #VERSION := $(shell git describe --tags --always --dirty)
 VERSION := 1.0.0
 
-
+# Repo for Artifactory deployment
+REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
 
 ###
 ### These variables should not need tweaking.
@@ -187,6 +188,23 @@ scan:
 	@echo "Running scans"
 	@echo "   TODO - scans"
 	@echo "Done running scans"
+
+#TODO: once we have specific versions of cappsd we should commit those in artifactory container-app-services
+#      instead of populating latest into sources as well, need to add version number too.
+deploy:
+	@read -p "Enter Artifactory Username: " ART_USER; \
+        printf "password: "; \
+        read -s ART_PASS; \
+	echo  "User: $${ART_USER}  \
+		   \nArch: $(ARCH) \
+		   \nRepo: $(REPO) \
+		   "; \
+	for f in `find ./bin/${OS} -name cappsd`; do \
+	  curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "$${f}" "$(REPO)/container-app-service/${NAME}_`echo $${f} | cut -d'/' -f4`"; \
+	  curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "$${f}" "$(REPO)/sources/${NAME}_`echo $${f} | cut -d'/' -f4`"; \
+        done; \
+	curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "./ecs.json" "$(REPO)/container-app-service/ecs.json"; \
+	curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "./ecs.json" "$(REPO)/sources/ecs.json"
 
 clean: image-clean bin-clean
 
