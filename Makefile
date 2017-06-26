@@ -34,9 +34,13 @@ ARCH ?= amd64
 #VERSION := $(shell git describe --tags --always --dirty)
 VERSION := 1.0.0
 
+# Modules and app/service
 APP := agent
 SUBMODULES := config handlers engine types utils
 TESTMODULES := config handlers engine types utils
+
+# Repo for Artifactory deployment
+REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
 
 ###
 ### These variables should not need tweaking.
@@ -223,6 +227,21 @@ push-name:
 
 version:
 	@echo $(VERSION)
+
+deploy:
+	@read -p "Enter Artifactory Username: " ART_USER; \
+        printf "password: "; \
+        read -s ART_PASS; \
+	echo  "User: $${ART_USER}  \
+		   \nArch: $(ARCH) \
+		   \nRepo: $(REPO) \
+		   "; \
+	for f in `find ./bin/${OS} -name cappsd`; do \
+	  curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "$${f}" "$(REPO)/container-app-service/${NAME}_`echo $${f} | cut -d'/' -f4`"; \
+	  curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "$${f}" "$(REPO)/sources/${NAME}_`echo $${f} | cut -d'/' -f4`"; \
+        done; \
+	curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "./ecs.json" "$(REPO)/container-app-service/ecs.json"; \
+	curl -X PUT --user "$${ART_USER}:$${ART_PASS}" -T "./ecs.json" "$(REPO)/sources/ecs.json"
 
 clean: image-clean bin-clean
 
