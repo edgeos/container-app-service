@@ -8,11 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.build.ge.com/container-app-service/config"
-	"github.build.ge.com/container-app-service/provider"
-	"github.build.ge.com/container-app-service/types"
-	"github.build.ge.com/container-app-service/utils"
 	"github.com/gorilla/mux"
+
+	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/provider"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/types"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/utils"
 )
 
 const (

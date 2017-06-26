@@ -5,8 +5,8 @@ import (
 	"log"
 	"runtime"
 
-	"github.build.ge.com/container-app-service/config"
-	"github.build.ge.com/container-app-service/handlers"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/handlers"
 )
 
 func main() {

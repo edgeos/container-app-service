@@ -4,12 +4,12 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-if [ -z "${PKG}" ]; then
-    echo "PKG must be set"
+if [ -z "${NAME}" ]; then
+    echo "NAME must be set"
     exit 1
 fi
-if [ -z "${OS}" ]; then
-    echo "OS must be set"
+if [ -z "${PKG}" ]; then
+    echo "PKG must be set"
     exit 1
 fi
 if [ -z "${ARCH}" ]; then
@@ -20,17 +20,12 @@ if [ -z "${VERSION}" ]; then
     echo "VERSION must be set"
     exit 1
 fi
-if [ -z "${NAME}" ]; then
-    echo "NAME must be set"
-    exit 1
-fi
 
 export CGO_ENABLED=0
 export GOARCH="${ARCH}"
-export GOOS="${OS}"
 
 go build                                                     \
     -installsuffix "static"                                  \
     -ldflags "-X ${PKG}/pkg/version.VERSION=${VERSION}"      \
-    -o bin/${OS}/${ARCH}/${NAME}                             \
-    ${PKG}
+    -o bin/${ARCH}/${NAME}                                   \
+    ./$@/...

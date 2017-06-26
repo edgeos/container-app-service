@@ -2,7 +2,7 @@ FROM ARG_FROM
 
 MAINTAINER Joel Markham <joel.markham@ge.com>
 
-ADD bin/linux/ARG_ARCH/ARG_NAME /ARG_NAME
+ADD bin/ARG_ARCH/ARG_NAME /ARG_NAME
 ADD ecs.json /
 
 #USER nobody:nobody

@@ -3,8 +3,8 @@ package provider
 import (
 	"io"
 
-	"github.build.ge.com/container-app-service/config"
-	"github.build.ge.com/container-app-service/types"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/types"
 )
 
 // Functions that a provider must include
@@ -23,5 +23,7 @@ type Provider interface {
 }
 
 func NewProvider(c config.Config) Provider {
-	return NewDocker(c)
+	p := NewDocker(c)
+	p.Init()
+	return p
 }
