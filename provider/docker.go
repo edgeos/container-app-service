@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"fmt"
+	"strings"
 	"io/ioutil"
-	"context"
 	"github.com/docker/docker/client"
 
 	"github.com/docker/libcompose/docker"
@@ -17,7 +17,7 @@ import (
 	"github.com/docker/libcompose/project"
 	"github.com/docker/libcompose/project/events"
 	"github.com/docker/libcompose/project/options"
-	// "golang.org/x/net/context"
+	"golang.org/x/net/context"
 
 	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
 	"github.build.ge.com/PredixEdgeOS/container-app-service/types"
@@ -46,6 +46,35 @@ func NewListener(d *Docker) {
 		provider: d,
 	}
 	go l.start()
+}
+
+func LoadImage(infilePath *string) {
+	input, err := os.Open(*infilePath)
+	if err != nil {
+		fmt.Println("Failed to open file: " + *infilePath + ". Error is: " + err.Error())
+	}
+	defer input.Close()
+
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		fmt.Println("Failed to create new client. Error is: " + err.Error())
+	}
+
+	imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
+	if err != nil {
+		fmt.Println("Failed to load the docker image from this file: " + *infilePath + ". Error is: " + err.Error())
+	}
+	defer imageLoadResponse.Body.Close()
+	if imageLoadResponse.JSON != true {
+		fmt.Println("expected a JSON response, was not.")
+	} else {
+		fmt.Println("imageLoadResponse.JSON is true.")
+	}
+	body, err := ioutil.ReadAll(imageLoadResponse.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("imageLoadResponse.Body is " + string(body))
 }
 
 func (l *EventListener) start() {
@@ -124,39 +153,21 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 		utils.Unpack(file, path)
 		composeFile := path + "/docker-compose.yml"
 
-		// Check if a tar ball file (*.tar.gz file) exists under the unpacked(unzipped) directory/path,
-		// if yes then call docker load to turn that file into a docker image
-		var infile = new(string)
-		*infile = path + "/helloyutao.tar.gz"
-
-		input, err := os.Open(*infile)
-		if err != nil {
-			panic(err)
+		// Check if a tar ball file (*.tar or *.tar.gz file) exists under the unpacked(unzipped) directory/path,
+		// if yes then call LoadImage function to turn that file into a docker image
+		files, err := ioutil.ReadDir(path)
+    if err != nil {
+			fmt.Println("Failed to read directory: " + path)
+    } else {
+	    for _, f := range files {
+	      if strings.Contains(f.Name(), ".tar") {
+					fmt.Println("Found a tar ball file: " + f.Name() + ". Will try to load this file as a docker image.")
+					var infile = new(string)
+					*infile = path + "/" + f.Name()
+					LoadImage(infile)
+				}
+	    }
 		}
-		defer input.Close()
-
-		cli, err := client.NewEnvClient()
-		if err != nil {
-			panic(err)
-		}
-
-		imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
-		if err != nil {
-			panic(err)
-		}
-		defer imageLoadResponse.Body.Close()
-		if imageLoadResponse.JSON != true {
-			panic("expected a JSON response, was not.")
-		} else {
-			fmt.Printf("imageLoadResponse.JSON is true." + "\n")
-		}
-		body, err := ioutil.ReadAll(imageLoadResponse.Body)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("imageLoadResponse.Body is " + string(body) + "\n")
-
-
 
 		c := ctx.Context{
 			Context: project.Context{
