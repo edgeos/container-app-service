@@ -16,6 +16,7 @@ import (
 	"github.build.ge.com/PredixEdgeOS/container-app-service/utils"
 )
 
+//Constants ...
 const (
 	Ok       = "Ok"
 	Fail     = "Fail"
@@ -25,11 +26,13 @@ const (
 	NoID     = "No ID in request"
 )
 
+//BasicResponse ...
 type BasicResponse struct {
 	Status string `json:"status"`
 	Error  string `json:"error"`
 }
 
+//DeployResponse ...
 type DeployResponse struct {
 	UUID    string `json:"uuid"`
 	Name    string `json:"name"`
@@ -38,6 +41,7 @@ type DeployResponse struct {
 	Error   string `json:"error"`
 }
 
+//AppDetailsResponse ...
 type AppDetailsResponse struct {
 	UUID       string            `json:"uuid"`
 	Name       string            `json:"name"`
@@ -47,11 +51,13 @@ type AppDetailsResponse struct {
 	Error      string            `json:"error"`
 }
 
+//Handler ...
 type Handler struct {
 	cfg      config.Config
 	provider provider.Provider
 }
 
+//NewHandler ...
 func NewHandler(c config.Config) *Handler {
 	return &Handler{
 		cfg:      c,
