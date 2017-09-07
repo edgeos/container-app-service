@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"fmt"
 	"strings"
 	"io/ioutil"
 	"github.com/docker/docker/client"
@@ -48,33 +47,22 @@ func NewListener(d *Docker) {
 	go l.start()
 }
 
-func LoadImage(infilePath *string) {
+func LoadImage(infilePath *string) error {
 	input, err := os.Open(*infilePath)
-	if err != nil {
-		fmt.Println("Failed to open file: " + *infilePath + ". Error is: " + err.Error())
+	if err == nil {
+		defer input.Close()
+		cli, err := client.NewEnvClient()
+		if err == nil {
+			imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
+			defer imageLoadResponse.Body.Close()
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
-	defer input.Close()
-
-	cli, err := client.NewEnvClient()
-	if err != nil {
-		fmt.Println("Failed to create new client. Error is: " + err.Error())
-	}
-
-	imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
-	if err != nil {
-		fmt.Println("Failed to load the docker image from this file: " + *infilePath + ". Error is: " + err.Error())
-	}
-	defer imageLoadResponse.Body.Close()
-	if imageLoadResponse.JSON != true {
-		fmt.Println("expected a JSON response, was not.")
-	} else {
-		fmt.Println("imageLoadResponse.JSON is true.")
-	}
-	body, err := ioutil.ReadAll(imageLoadResponse.Body)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("imageLoadResponse.Body is " + string(body))
+	return err
 }
 
 func (l *EventListener) start() {
@@ -153,15 +141,10 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 		utils.Unpack(file, path)
 		composeFile := path + "/docker-compose.yml"
 
-		// Check if a tar ball file (*.tar or *.tar.gz file) exists under the unpacked(unzipped) directory/path,
-		// if yes then call LoadImage function to turn that file into a docker image
 		files, err := ioutil.ReadDir(path)
-    if err != nil {
-			fmt.Println("Failed to read directory: " + path)
-    } else {
+    if err == nil {
 	    for _, f := range files {
 	      if strings.Contains(f.Name(), ".tar") {
-					fmt.Println("Found a tar ball file: " + f.Name() + ". Will try to load this file as a docker image.")
 					var infile = new(string)
 					*infile = path + "/" + f.Name()
 					LoadImage(infile)
