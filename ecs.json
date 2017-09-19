@@ -1,6 +1,6 @@
 {
     "listen_address": ":9000",
-    "data_volume": "/home/yutao/edge",
+    "data_volume": "/mnt/data",
     "read_timeout": 30,
     "write_timeout:": 30,
 
