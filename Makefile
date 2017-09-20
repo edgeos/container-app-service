@@ -107,7 +107,7 @@ build-dirs:
 		docker build                                                       \
 		-t $(NAME)-$(ARCH):builder                                         \
 		-f .builder-$(ARCH)                                                \
-		$$(echo $(PROXY_ARGS) | sed s/-e/--build-arg/g)                    \
+		$$(echo "$(PROXY_ARGS)" | sed s/-e/--build-arg/g)                    \
 		.                                                                  \
 		"
 
