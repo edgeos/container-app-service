@@ -7,6 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"strings"
+	"io/ioutil"
+	"github.com/docker/docker/client"
+
 	"github.com/docker/libcompose/docker"
 	"github.com/docker/libcompose/docker/ctx"
 	"github.com/docker/libcompose/project"
@@ -41,6 +45,24 @@ func NewListener(d *Docker) {
 		provider: d,
 	}
 	go l.start()
+}
+
+func LoadImage(infilePath *string) error {
+	input, err := os.Open(*infilePath)
+	if err == nil {
+		defer input.Close()
+		cli, err := client.NewEnvClient()
+		if err == nil {
+			imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
+			defer imageLoadResponse.Body.Close()
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return err
 }
 
 func (l *EventListener) start() {
@@ -118,6 +140,17 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 		os.Mkdir(path, os.ModePerm)
 		utils.Unpack(file, path)
 		composeFile := path + "/docker-compose.yml"
+
+		files, err := ioutil.ReadDir(path)
+    if err == nil {
+	    for _, f := range files {
+	      if strings.Contains(f.Name(), ".tar") {
+					var infile = new(string)
+					*infile = path + "/" + f.Name()
+					LoadImage(infile)
+				}
+	    }
+		}
 
 		c := ctx.Context{
 			Context: project.Context{

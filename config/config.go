@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 )
 
+//Config ... a struct for Configuration
 type Config struct {
 	Docker        dockerConfig
 	ListenAddress string `json:"listen_address"`
@@ -19,6 +20,7 @@ type dockerConfig struct {
 	SSLPort  int    `json:"reserved_ssl_port"`
 }
 
+//NewConfig ...
 func NewConfig(path string) (Config, error) {
 	cfg := Config{}
 	file, err := ioutil.ReadFile(path)

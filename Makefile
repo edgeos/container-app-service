@@ -36,8 +36,8 @@ VERSION := 1.0.0
 
 # Modules and app/service
 APP := agent
-SUBMODULES := config handlers engine types utils
-TESTMODULES := config handlers engine types utils
+SUBMODULES := config handlers types utils
+TESTMODULES := config handlers types utils
 
 # Repo for Artifactory deployment
 REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
@@ -57,13 +57,18 @@ PROXY_ARGS := $(shell if [ "$$http_proxy" != "" ]; then echo "-e http_proxy=$$ht
 PROXY_ARGS += $(shell if [ "$$https_proxy" != "" ]; then echo " -e https_proxy=$$https_proxy"; fi)
 PROXY_ARGS += $(shell if [ "$$no_proxy" != "" ]; then echo " -e no_proxy=$$no_proxy"; fi)
 
-ALL_ARCH := amd64 arm
+ALL_ARCH := amd64 arm arm64
 
+IMGARCH=$(ARCH)
 ifeq ($(ARCH),amd64)
 	BASEIMAGE?=registry.gear.ge.com/predix_edge/alpine-amd64:3.4
 endif
 ifeq ($(ARCH),arm)
 	BASEIMAGE?=registry.gear.ge.com/predix_edge/alpine-arm:3.4
+endif
+ifeq ($(ARCH),arm64)
+	BASEIMAGE?=registry.gear.ge.com/predix_edge/alpine-aarch64:3.5
+	IMGARCH=aarch64
 endif
 
 IMAGE := $(REGISTRY)/$(NAME)-$(ARCH)
@@ -101,13 +106,13 @@ build-dirs:
 .builder-$(ARCH):
 	@echo "creating builder image ... "
 	@sed \
-		-e 's|#{ARCH}|$(ARCH)|g' \
+		-e 's|#{ARCH}|$(IMGARCH)|g' \
 		Dockerfile.builder > .builder-$(ARCH)
-	@bash -c "trap 'rm .builder-$(ARCH)' ERR;                              \
+	@bash -xc "trap 'rm .builder-$(ARCH)' ERR;                              \
 		docker build                                                       \
 		-t $(NAME)-$(ARCH):builder                                         \
 		-f .builder-$(ARCH)                                                \
-		$$(echo $(PROXY_ARGS) | sed s/-e/--build-arg/g)                    \
+		$$(echo "$(PROXY_ARGS)" | sed s/-e/--build-arg/g)                    \
 		.                                                                  \
 		"
 
@@ -126,6 +131,7 @@ fetch-deps: build-dirs .builder-$(ARCH)
 		/bin/sh -c "                                                       \
 			./scripts/fetch-deps.sh                                        \
 		"
+	@echo "fetch-deps: Build Success"
 
 bin/$(ARCH)/$(NAME): fetch-deps
 	@echo "building: $@"
