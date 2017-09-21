@@ -1,4 +1,4 @@
 #!/bin/sh
 
-go get -u \
+go get \
         github.com/golang/lint/golint

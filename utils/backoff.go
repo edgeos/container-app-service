@@ -6,11 +6,13 @@ import (
 	"time"
 )
 
+//Backoff ...
 type Backoff interface {
 	Reset()
 	Duration() time.Duration
 }
 
+//SimpleBackoff ...
 type SimpleBackoff struct {
 	current        time.Duration
 	start          time.Duration
@@ -36,6 +38,7 @@ func NewSimpleBackoff(min, max time.Duration, jitterMultiple, multiple float64) 
 	}
 }
 
+//Duration ...
 func (sb *SimpleBackoff) Duration() time.Duration {
 	ret := sb.current
 	sb.current = time.Duration(math.Min(float64(sb.max.Nanoseconds()), float64(float64(sb.current.Nanoseconds())*sb.multiple)))
@@ -43,6 +46,7 @@ func (sb *SimpleBackoff) Duration() time.Duration {
 	return AddJitter(ret, time.Duration(int64(float64(ret)*sb.jitterMultiple)))
 }
 
+//Reset ...
 func (sb *SimpleBackoff) Reset() {
 	sb.current = sb.start
 }
