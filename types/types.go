@@ -1,5 +1,6 @@
 package types
 
+//Constants ...
 const (
 	Ok        = "Ok"
 	Fail      = "Fail"
@@ -9,15 +10,18 @@ const (
 	InvalidID = "Application ID not found"
 )
 
+//Metadata ...
 type Metadata struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
+//Applications ...
 type Applications struct {
 	Apps []App `json:"applications"`
 }
 
+//App ...
 type App struct {
 	UUID    string `json:"uuid"`
 	Name    string `json:"name"`
@@ -25,6 +29,7 @@ type App struct {
 	Path    string `json:"path"`
 }
 
+//AppDetails ...
 type AppDetails struct {
 	UUID       string `json:"uuid"`
 	Name       string `json:"name"`
@@ -32,6 +37,7 @@ type AppDetails struct {
 	Containers []Container
 }
 
+//Container ...
 type Container struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`

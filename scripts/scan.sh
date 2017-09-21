@@ -7,7 +7,6 @@ set -o pipefail
 TARGETS=$(for d in "$@"; do echo ./$d/...; done)
 
 echo -n "Checking gofmt: "
-
 ERRS=$(find "$@" -type f -name \*.go | xargs gofmt -l 2>&1 || true)
 if [ -n "${ERRS}" ]; then
     echo "FAIL - the following files need to be gofmt'ed:"
@@ -41,4 +40,3 @@ if [ -n "${ERRS}" ]; then
 fi
 echo "PASS"
 echo
-~    

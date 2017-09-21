@@ -36,8 +36,8 @@ VERSION := 1.0.0
 
 # Modules and app/service
 APP := agent
-SUBMODULES := config handlers engine types utils
-TESTMODULES := config handlers engine types utils
+SUBMODULES := config handlers types utils
+TESTMODULES := config handlers types utils
 
 # Repo for Artifactory deployment
 REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
@@ -131,6 +131,7 @@ fetch-deps: build-dirs .builder-$(ARCH)
 		/bin/sh -c "                                                       \
 			./scripts/fetch-deps.sh                                        \
 		"
+	@echo "fetch-deps: Build Success"
 
 bin/$(ARCH)/$(NAME): fetch-deps
 	@echo "building: $@"
