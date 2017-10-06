@@ -1,0 +1,13 @@
+{
+    "listen_address": ":9001",
+    "data_volume": "/tmp",
+    "read_timeout": 30,
+    "write_timeout:": 30,
+
+    "Docker":
+    {
+        "endpoint": "unix://var/run/docker.sock",
+        "reservedPort": 2375,
+        "reservedSSLPort": 2376
+    }
+}
