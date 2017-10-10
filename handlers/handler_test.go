@@ -3,28 +3,23 @@ package handlers
 import (
   "fmt"
   "strings"
-  "encoding/json"
   "io/ioutil"
-  "time"
-  "io"
   "os"
+  "io"
+  "encoding/json"
   "bytes"
   "mime/multipart"
-  "testing"
+  "time"
   "net/http"
-  "net/http/httptest"
-  "github.build.ge.com/PredixEdgeOS/container-app-service/config"
-  "github.build.ge.com/PredixEdgeOS/container-app-service/utils"
-  "github.build.ge.com/PredixEdgeOS/container-app-service/types"
-
+  "testing"
   "log"
   "sync"
   "github.com/gorilla/mux"
+  "github.build.ge.com/PredixEdgeOS/container-app-service/config"
+  "github.build.ge.com/PredixEdgeOS/container-app-service/utils"
 )
 
 var configFilePath string = "../ecs.json"
-var configFilePath1 string = "../test_artifacts/ecsTest1.json"
-var configFilePath2 string = "../test_artifacts/ecsTest2.json"
 var appInputFilePath1 string = "../test_artifacts/matlab-sim-app.tar.gz"
 var appInputFilePath2 string = "../test_artifacts/helloapp.tar.gz"
 var idSlice []string
@@ -110,86 +105,111 @@ func TestNewHandler(t *testing.T) {
     t.Fail()
   }
 }
-          return err
-func TestPing(t *testing.T) {
-  cfg, err := config.NewConfig(configFilePath)
-  if err == nil {
-      handler := NewHandler(cfg)
-      handlerPing := http.HandlerFunc(handler.ping)
 
-      req, err := http.NewRequest("GET", "/ping", nil)
-      if err != nil {
-        t.Error("Failed in creating http ping request!")          return err
-        t.Fail()
-      }
-      rr := httptest.NewRecorder()
+func TestAllHandlers(t *testing.T) {
+  Setup(t, configFilePath)
 
-      handlerPing.ServeHTTP(rr, req)
-      handler = nil
-      if status := rr.Code; status != http.StatusOK {
-        t.Errorf("handler returned wrong status code: got %v want %v",
-          status, http.StatusOK)
-      }
-      expected := "{\"status\":\"Ok\",\"error\":\"\"}\n"
-      if rr.Body.String() != expected {
-        t.Errorf("handler returned unexpected body: got %v want %v",
-            rr.Body.String(), expected)
-      }
-  } else {          return err
-    t.Error("Failed to create new config!")
-    t.Fail()
-  }
+  PingTest(t)
+  DeployApplicationDTRTest(t)
+  ListApplicationsTest(t)
+  GetApplicationTest(t)
+  DeployApplicationTARTest(t)
+
+  Teardown(t)
 }
 
-func TestListApplications(t *testing.T) {
-  cfg, err := config.NewConfig(configFilePath)
-  if err == nil {
-      h := NewHandler(cfg)
-      handlerListApplications := http.HandlerFunc(h.listApplications)
-
-      // First need to deploy an applications
-      metadata := types.Metadata{"testapp", "1.0"}
-      file, _ := os.Open(appInputFilePath1)          return err
-      if app, err := h.provider.Deploy(metadata, file); err == nil {
-        req, err := http.NewRequest("GET", "/applications", nil)
-        if err != nil {
-          t.Error("Failed in creating http GetApplications request!")
-          t.Fail()
-        }
-        rr := httptest.NewRecorder()
-        appId := app.UUID
-
-        handlerListApplications.ServeHTTP(rr, req)
-        if status := rr.Code; status != http.StatusOK {
-          t.Errorf("handler returned wrong status code: got %v want %v",
-            status, http.StatusOK)
-        }
-  fmt.Printf("rr.Body.String()=%s\n", rr.Body.String())
-        expected := appId //"{\"applications\":"
-        if !strings.Contains(rr.Body.String(), expected) {
-          t.Errorf("handler returned unexpected body: got %v want %v",
-              rr.Body.String(), expected)
-        }
-
-        err = h.provider.Undeploy(appId)
-        if (err != nil) {
-          t.Error("Failed to undeploy app with id: " + appId)
-          t.Fail()
-        }
-
-      } else {
-        t.Error("Failed in deploying the application!")
-        t.Fail()
-      }
-  } else {
-    t.Error("Failed to create new config!")
+func PingTest(t *testing.T) {
+  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/ping", nil)
+  if err != nil {
+    t.Error("Failed in creating http ping request!")
     t.Fail()
   }
+
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    t.Error("Failed in executing the http ping request! err is: ", err)
+    t.Fail()
+  }
+  defer resp.Body.Close()
+
+  if statusCode := resp.StatusCode; statusCode != http.StatusOK {
+    t.Errorf("handler returned wrong status code: got %v want %v",
+      statusCode, http.StatusOK)
+    t.Fail()
+  }
+
+  fmt.Println("Passed Ping Test")
 }
 
-func TestDeployApplicationDTR(t *testing.T) {
-  err := Setup(t, configFilePath1)
-  if err == nil {
+func ListApplicationsTest(t *testing.T) {
+  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/applications", nil)
+  if err != nil {
+    t.Error("Failed in creating http ListApplications request!")
+    t.Fail()
+  }
+
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    t.Error("Failed in executing the http ListApplications request! err is: ", err)
+    t.Fail()
+  }
+  defer resp.Body.Close()
+
+  if statusCode := resp.StatusCode; statusCode != http.StatusOK {
+    t.Errorf("handler returned wrong status code: got %v want %v",
+      statusCode, http.StatusOK)
+    t.Fail()
+  }
+
+  bodyBytes, _ := ioutil.ReadAll(resp.Body)
+  bodyString := string(bodyBytes)
+  expected := idSlice[0]
+  if !strings.Contains(bodyString, expected) {
+    t.Errorf("handler returned unexpected body: got %v want %v",
+        bodyString, expected)
+    t.Fail()
+  }
+
+  fmt.Println("Passed ListApplications Test")
+}
+
+func GetApplicationTest(t *testing.T) {
+  appId := idSlice[0]
+  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/application/" + appId, nil)
+  if err != nil {
+    t.Error("Failed in creating http GetApplication request!")
+    t.Fail()
+  }
+
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    t.Error("Failed in executing the http GetApplication request! err is: ", err)
+    t.Fail()
+  }
+  defer resp.Body.Close()
+
+  if statusCode := resp.StatusCode; statusCode != http.StatusOK {
+    t.Errorf("handler returned wrong status code: got %v want %v",
+      statusCode, http.StatusOK)
+    t.Fail()
+  }
+
+  bodyBytes, _ := ioutil.ReadAll(resp.Body)
+  bodyString := string(bodyBytes)
+  expected := appId
+  if !strings.Contains(bodyString, expected) {
+    t.Errorf("handler returned unexpected body: got %v want %v",
+        bodyString, expected)
+    t.Fail()
+  }
+
+  fmt.Println("Passed GetApplication Test")
+}
+
+func DeployApplicationDTRTest(t *testing.T) {
     // Add file to POST request body
     var body bytes.Buffer
     writer := multipart.NewWriter(&body)
@@ -210,79 +230,11 @@ func TestDeployApplicationDTR(t *testing.T) {
     }
 
     // Add other form fields
-    _ = writer.WriteField("metadata", "{\"Name\":\"testapp2\", \"Version\":\"1.0\"}")
-
-    writer.Close()
-
-    req, err := http.NewRequest("POST", "http://127.0.0.1:9001/application/deploy", &body)
-    if err != nil {
-      t.Error("Failed in creating http application deploy request!")
-      t.Fail()
-    }
-    req.Header.Set("Content-Type", writer.FormDataContentType())
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-      t.Error("Failed in executing the http request! err is: ", err)
-      t.Fail()
-    }
-    defer resp.Body.Close()
-
-    resBody, readErr := ioutil.ReadAll(resp.Body)
-    if readErr != nil {
-        fmt.Println("resBody error:", readErr)
-        t.Error("Failed in reading response body!")
-        t.Fail()
-    } else {
-      resBodyString := string(resBody)
-      fmt.Printf("\nresBodyString=%v\n\n", resBodyString)
-
-      var deployResponse DeployResponse
-      unmarshalErr := json.Unmarshal([]byte(resBodyString), &deployResponse)
-      if unmarshalErr != nil {
-        t.Error("Failed in unmarshalling the response!")
-        t.Fail()
-      }
-      idSlice = append(idSlice, deployResponse.UUID)
-    }
-
-    teardownErr := Teardown(t)
-    if teardownErr != nil {
-      t.Error("Failed in teardown, err is: ", teardownErr)
-      t.Fail()
-    }
-  }
-}
-
-func TestDeployApplicationTAR(t *testing.T) {
-  err := Setup(t, configFilePath2)
-  if err == nil {
-    // Add file to POST request body
-    var body bytes.Buffer
-    writer := multipart.NewWriter(&body)
-    file, err := os.Open(appInputFilePath2)
-    if err != nil {
-      t.Error("Failed to open app tar file!")
-      t.Fail()
-    }
-    defer file.Close()
-    formWriter, err := writer.CreateFormFile("artifact", appInputFilePath1)
-    if err != nil {
-      t.Error("Failed to create form file!")
-      t.Fail()
-    }
-    if _, err = io.Copy(formWriter, file); err != nil {
-      t.Error("Failed to copy file to formWriter!")
-      t.Fail()
-    }
-
-    // Add other form fields
     _ = writer.WriteField("metadata", "{\"Name\":\"testapp1\", \"Version\":\"1.0\"}")
 
     writer.Close()
 
-    req, err := http.NewRequest("POST", "http://127.0.0.1:9002/application/deploy", &body)
+    req, err := http.NewRequest("POST", "http://127.0.0.1:9000/application/deploy", &body)
     if err != nil {
       t.Error("Failed in creating http application deploy request!")
       t.Fail()
@@ -299,12 +251,10 @@ func TestDeployApplicationTAR(t *testing.T) {
 
     resBody, readErr := ioutil.ReadAll(resp.Body)
     if readErr != nil {
-        fmt.Println("resBody error:", readErr)
         t.Error("Failed in reading response body!")
         t.Fail()
     } else {
       resBodyString := string(resBody)
-      fmt.Printf("\nresBodyString=%v\n\n", resBodyString)
 
       var deployResponse DeployResponse
       unmarshalErr := json.Unmarshal([]byte(resBodyString), &deployResponse)
@@ -315,36 +265,63 @@ func TestDeployApplicationTAR(t *testing.T) {
       idSlice = append(idSlice, deployResponse.UUID)
     }
 
-    teardownErr := Teardown(t)
-    if teardownErr != nil {
-      t.Error("Failed in teardown, err=%v\n", teardownErr)
-      t.Fail()
-    }
-  }
+    fmt.Println("Passed DeployApplicationDTR Test")
 }
 
+func DeployApplicationTARTest(t *testing.T) {
+  // Add file to POST request body
+  var body bytes.Buffer
+  writer := multipart.NewWriter(&body)
+  file, err := os.Open(appInputFilePath2)
+  if err != nil {
+    t.Error("Failed to open app tar file!")
+    t.Fail()
+  }
+  defer file.Close()
+  formWriter, err := writer.CreateFormFile("artifact", appInputFilePath2)
+  if err != nil {
+    t.Error("Failed to create form file!")
+    t.Fail()
+  }
+  if _, err = io.Copy(formWriter, file); err != nil {
+    t.Error("Failed to copy file to formWriter!")
+    t.Fail()
+  }
 
+  // Add other form fields
+  _ = writer.WriteField("metadata", "{\"Name\":\"testapp2\", \"Version\":\"1.0\"}")
 
-// func TestStart(t *testing.T) {
-//   var filePath string = "../ecs.json"
-//   cfg, err := config.NewConfig(filePath)
-//   if err == nil {
-//     fmt.Println("Before Start(cfg)...")
-//     go Start(cfg)
-//
-//     fmt.Println("After Start(cfg)...")
-//     //if (errStart == nil) {
-//       _, errPing := http.Get("http://localhost:9000/applications")
-//       if errPing != nil {
-//         t.Error("Failed with ping request!")
-//         t.Fail()
-//       }
-//     // } else {
-//     //   t.Error("Failed to start server!")
-//     //   t.Fail()
-//     // }
-//   } else {
-//     t.Error("Failed to create new config!")
-//     t.Fail()
-//   }
-// }
+  writer.Close()
+
+  req, err := http.NewRequest("POST", "http://127.0.0.1:9000/application/deploy", &body)
+  if err != nil {
+    t.Error("Failed in creating http application deploy request!")
+    t.Fail()
+  }
+  req.Header.Set("Content-Type", writer.FormDataContentType())
+
+  client := &http.Client{}
+  resp, err := client.Do(req)
+  if err != nil {
+    t.Error("Failed in executing the http request! err is: ", err)
+    t.Fail()
+  }
+  defer resp.Body.Close()
+
+  resBody, readErr := ioutil.ReadAll(resp.Body)
+  if readErr != nil {
+      t.Error("Failed in reading response body!")
+      t.Fail()
+  } else {
+    resBodyString := string(resBody)
+    var deployResponse DeployResponse
+    unmarshalErr := json.Unmarshal([]byte(resBodyString), &deployResponse)
+    if unmarshalErr != nil {
+      t.Error("Failed in unmarshalling the response!")
+      t.Fail()
+    }
+    idSlice = append(idSlice, deployResponse.UUID)
+  }
+
+  fmt.Println("Passed DeployApplicationTAR Test")
+}
