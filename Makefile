@@ -36,8 +36,8 @@ VERSION := 1.0.0
 
 # Modules and app/service
 APP := agent
-SUBMODULES := config handlers types utils
-TESTMODULES := config handlers types utils
+SUBMODULES := config handlers provider types utils
+TESTMODULES := config handlers provider utils
 
 # Repo for Artifactory deployment
 REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
@@ -52,7 +52,9 @@ REPO = https://devcloud.swcoe.ge.com/artifactory/UQBMU/OS/Yocto/mirror
 #
 # On OSX, don't do anything with the container user, and let boot2docker manage
 # permissions on the /Users mount that it sets up
-DOCKER_USER := $(shell if [ "$$OSTYPE" != "darwin"* ]; then USER_ARG="--user=`id -u`"; fi; echo "$$USER_ARG")
+DOCKER_GID := $(shell USER_ARG="`cat /etc/group | grep docker | cut -d':' -f3`"; echo "$$USER_ARG")
+DOCKER_USER := $(shell if [ "$$OSTYPE" != "darwin"* ]; then USER_ARG="--user=`id -u`:$(DOCKER_GID)"; fi; echo "$$USER_ARG")
+# DOCKER_USER := $(shell if [ "$$OSTYPE" != "darwin"* ]; then USER_ARG="--user=`id -u`"; fi; echo "$$USER_ARG")
 PROXY_ARGS := $(shell if [ "$$http_proxy" != "" ]; then echo "-e http_proxy=$$http_proxy"; fi)
 PROXY_ARGS += $(shell if [ "$$https_proxy" != "" ]; then echo " -e https_proxy=$$https_proxy"; fi)
 PROXY_ARGS += $(shell if [ "$$no_proxy" != "" ]; then echo " -e no_proxy=$$no_proxy"; fi)
@@ -178,9 +180,12 @@ test: fetch-deps
 	@echo "running tests: $(ARCH)"
 	@docker run                                                            \
 		--rm                                                               \
+		--privileged                                                       \
 		-t                                                                 \
 		$(DOCKER_USER)                                                     \
 		$(PROXY_ARGS)                                                      \
+		-v /var/run/docker.sock:/var/run/docker.sock                       \
+		-v /var/run/docker.pid:/var/run/docker.pid                         \
 		-v $$(pwd)/.go:/go                                                 \
 		-v $$(pwd):/go/src/$(PKG)                                          \
 		-v $$(pwd)/bin/$(ARCH):/go/bin                                     \
