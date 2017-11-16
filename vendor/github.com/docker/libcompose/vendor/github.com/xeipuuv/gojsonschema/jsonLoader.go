@@ -109,7 +109,6 @@ func (l *jsonReferenceLoader) loadJSON() (interface{}, error) {
 }
 
 func (l *jsonReferenceLoader) loadSchema() (*Schema, error) {
-
 	var err error
 
 	d := Schema{}
@@ -188,7 +187,6 @@ func (l *jsonStringLoader) loadJSON() (interface{}, error) {
 }
 
 func (l *jsonStringLoader) loadSchema() (*Schema, error) {
-
 	var err error
 
 	document, err := l.loadJSON()
@@ -243,7 +241,6 @@ func (l *jsonGoLoader) loadJSON() (interface{}, error) {
 }
 
 func (l *jsonGoLoader) loadSchema() (*Schema, error) {
-
 	var err error
 
 	document, err := l.loadJSON()

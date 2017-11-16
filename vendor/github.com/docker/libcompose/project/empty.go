@@ -27,7 +27,7 @@ func (e *EmptyService) Build(ctx context.Context, buildOptions options.Build) er
 }
 
 // Up implements Service.Up but does nothing.
-func (e *EmptyService) Up(ctx context.Context, options options.Up) error {
+func (e *EmptyService) Up(serviceConfig *config.ServiceConfig, ctx context.Context, options options.Up) error {
 	return nil
 }
 

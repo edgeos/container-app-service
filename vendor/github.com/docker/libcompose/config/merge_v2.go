@@ -24,15 +24,13 @@ func MergeServicesV2(existingServices *ServiceConfigs, environmentLookup Environ
 			return nil, err
 		}
 
-		if serviceConfig, ok := existingServices.Get(name); ok {
+	if serviceConfig, ok := existingServices.Get(name); ok {
 			var rawExistingService RawService
 			if err := utils.Convert(serviceConfig, &rawExistingService); err != nil {
 				return nil, err
 			}
-
 			data = mergeConfig(rawExistingService, data)
 		}
-
 		datas[name] = data
 	}
 
@@ -53,7 +51,6 @@ func MergeServicesV2(existingServices *ServiceConfigs, environmentLookup Environ
 	if err := utils.Convert(datas, &serviceConfigs); err != nil {
 		return nil, err
 	}
-
 	return serviceConfigs, nil
 }
 
@@ -114,7 +111,7 @@ func parseV2(resourceLookup ResourceLookup, environmentLookup EnvironmentLookup,
 		}
 
 		if options.Validate {
-			if err := validate(baseRawServices); err != nil {
+			if err := validateV2(baseRawServices); err != nil {
 				return nil, err
 			}
 		}
@@ -180,8 +177,13 @@ func resolveContextV2(inFile string, serviceData RawService) RawService {
 	} else {
 		current = path.Join(current, context)
 	}
-
-	build["context"] = current
+	if _, ok := serviceData["build"].(string); ok {
+		//build is specified as a string containing a path to the build context
+		serviceData["build"] = current
+	} else {
+		//build is specified as an object with the path specified under context
+		build["context"] = current
+	}
 
 	return serviceData
 }

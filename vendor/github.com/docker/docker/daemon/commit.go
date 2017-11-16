@@ -24,6 +24,9 @@ import (
 // It will mutate the specified user configuration (userConf) with the image
 // configuration where the user configuration is incomplete.
 func merge(userConf, imageConf *containertypes.Config) error {
+
+fmt.Printf("In docker/docker/daemon/commit.go, merge() function, *userConf=%v, *imageConf=%v\n", userConf, imageConf)
+
 	if userConf.User == "" {
 		userConf.User = imageConf.User
 	}

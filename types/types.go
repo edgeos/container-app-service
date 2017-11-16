@@ -14,6 +14,7 @@ const (
 type Metadata struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
+	Monitor	string `json:"monitor"`
 }
 
 //Applications ...
@@ -27,6 +28,7 @@ type App struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Path    string `json:"path"`
+	Monitor	string `json:"monitor"`
 }
 
 //AppDetails ...
@@ -34,6 +36,7 @@ type AppDetails struct {
 	UUID       string `json:"uuid"`
 	Name       string `json:"name"`
 	Version    string `json:"version"`
+	Monitor	   string `json:"monitor"`
 	Containers []Container
 }
 

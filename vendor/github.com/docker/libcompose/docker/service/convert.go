@@ -158,6 +158,7 @@ func Convert(c *config.ServiceConfig, ctx project.Context, clientFactory compose
 		Env:          utils.CopySlice(c.Environment),
 		Cmd:          strslice.StrSlice(utils.CopySlice(c.Command)),
 		Image:        c.Image,
+		// Healthcheck: 	c.Healthcheck
 		Labels:       utils.CopyMap(c.Labels),
 		ExposedPorts: exposedPorts,
 		Tty:          c.Tty,
@@ -166,6 +167,7 @@ func Convert(c *config.ServiceConfig, ctx project.Context, clientFactory compose
 		Volumes:      toMap(Filter(vols, isVolume)),
 		MacAddress:   c.MacAddress,
 		StopSignal:   c.StopSignal,
+		StopTimeout:  utils.DurationStrToSecondsInt(c.StopGracePeriod),
 	}
 
 	ulimits := []*units.Ulimit{}

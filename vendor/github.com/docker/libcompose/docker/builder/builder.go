@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/builder/dockerignore"
-	"github.com/docker/docker/cli/command/image/build"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/fileutils"
@@ -42,6 +42,7 @@ type DaemonBuilder struct {
 	ForceRemove      bool
 	Pull             bool
 	BuildArgs        map[string]*string
+	CacheFrom        []string
 	LoggerFactory    logger.Factory
 }
 
@@ -75,7 +76,7 @@ func (d *DaemonBuilder) Build(ctx context.Context, imageName string) error {
 	}
 
 	// Setup an upload progress bar
-	progressOutput := streamformatter.NewStreamFormatter().NewProgressOutput(progBuff, true)
+	progressOutput := streamformatter.NewProgressOutput(progBuff)
 
 	var body io.Reader = progress.NewProgressReader(buildCtx, progressOutput, 0, "", "Sending build context to Docker daemon")
 
@@ -96,6 +97,7 @@ func (d *DaemonBuilder) Build(ctx context.Context, imageName string) error {
 		Dockerfile:  d.Dockerfile,
 		AuthConfigs: d.AuthConfigs,
 		BuildArgs:   d.BuildArgs,
+		CacheFrom:   d.CacheFrom,
 	})
 	if err != nil {
 		return err

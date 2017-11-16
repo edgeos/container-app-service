@@ -35,7 +35,7 @@ func (n *Network) fullName() string {
 
 // Inspect inspect the current network
 func (n *Network) Inspect(ctx context.Context) (types.NetworkResource, error) {
-	return n.client.NetworkInspect(ctx, n.fullName())
+	return n.client.NetworkInspect(ctx, n.fullName(), false)
 }
 
 // Remove removes the current network (from docker engine)
@@ -101,7 +101,9 @@ func convertToAPIIpam(ipam config.Ipam) *network.IPAM {
 func NewNetwork(projectName, name string, config *config.NetworkConfig, client client.NetworkAPIClient) *Network {
 	networkName := name
 	if config.External.External {
-		networkName = config.External.Name
+		if config.External.Name != "" {
+			networkName = config.External.Name
+		}
 	}
 	return &Network{
 		client:        client,

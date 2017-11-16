@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
+	// "time"
 	"golang.org/x/net/context"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	containertypes "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/libcompose/config"
 	composecontainer "github.com/docker/libcompose/docker/container"
 	"github.com/docker/libcompose/labels"
@@ -25,6 +27,7 @@ func (s *Service) createContainer(ctx context.Context, namer Namer, oldContainer
 		serviceConfig.Tty = configOverride.Tty
 		serviceConfig.StdinOpen = configOverride.StdinOpen
 	}
+
 	configWrapper, err := ConvertToAPI(serviceConfig, s.context.Context, s.clientFactory)
 	if err != nil {
 		return nil, err
@@ -55,9 +58,40 @@ func (s *Service) createContainer(ctx context.Context, namer Namer, oldContainer
 		configWrapper.HostConfig.Binds = util.Merge(configWrapper.HostConfig.Binds, volumeBinds(configWrapper.Config.Volumes, &info))
 	}
 
+	networkConfig := configWrapper.NetworkingConfig
+	if configWrapper.HostConfig.NetworkMode != "" && configWrapper.HostConfig.NetworkMode.IsUserDefined() {
+		if networkConfig == nil {
+			networkConfig = &network.NetworkingConfig{
+				EndpointsConfig: map[string]*network.EndpointSettings{
+					string(configWrapper.HostConfig.NetworkMode): {},
+				},
+			}
+		}
+		for key, value := range networkConfig.EndpointsConfig {
+
+			conf := value
+			if value.Aliases == nil {
+				value.Aliases = []string{}
+			}
+			value.Aliases = append(value.Aliases, s.name)
+			networkConfig.EndpointsConfig[key] = conf
+		}
+	}
 	logrus.Debugf("Creating container %s %#v", containerName, configWrapper)
+
+if  configOverride != nil {
+	if configOverride.Healthcheck != nil {
+configWrapper.Config.Healthcheck = &container.HealthConfig{
+	Test: configOverride.Healthcheck.Test,
+	Interval: configOverride.Healthcheck.Interval,
+	Timeout: configOverride.Healthcheck.Timeout,
+	Retries: configOverride.Healthcheck.Retries,
+}
+}
+}
+
 	// FIXME(vdemeester): long-term will be container.Create(…)
-	container, err := composecontainer.Create(ctx, client, containerName, configWrapper.Config, configWrapper.HostConfig, configWrapper.NetworkingConfig)
+	container, err := composecontainer.Create(ctx, client, containerName, configWrapper.Config, configWrapper.HostConfig, networkConfig)
 	if err != nil {
 		return nil, err
 	}

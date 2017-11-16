@@ -7,7 +7,7 @@ import (
 	"github.build.ge.com/PredixEdgeOS/container-app-service/types"
 )
 
-// Functions that a provider must include
+// Provider : Functions that a provider must include
 type Provider interface {
 	Init() error
 
@@ -22,6 +22,7 @@ type Provider interface {
 	ListApplications() types.Applications
 }
 
+// NewProvider ...
 func NewProvider(c config.Config) Provider {
 	p := NewDocker(c)
 	p.Init()
