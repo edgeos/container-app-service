@@ -60,6 +60,8 @@ type (
 
 	// UUIDFormatChecker validates a UUID is in the correct format
 	UUIDFormatChecker struct{}
+
+	DurationFormatChecker struct{}
 )
 
 var (
@@ -74,6 +76,7 @@ var (
 			"ipv6":      IPV6FormatChecker{},
 			"uri":       URIFormatChecker{},
 			"uuid":      UUIDFormatChecker{},
+			"duration":  DurationFormatChecker{},
 		},
 	}
 
@@ -175,4 +178,9 @@ func (f HostnameFormatChecker) IsFormat(input string) bool {
 
 func (f UUIDFormatChecker) IsFormat(input string) bool {
 	return rxUUID.MatchString(input)
+}
+
+func (f DurationFormatChecker) IsFormat(input string) bool {
+	_, err := time.ParseDuration(input)
+	return err == nil
 }

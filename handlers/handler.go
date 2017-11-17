@@ -123,6 +123,7 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusBadRequest)
 				}
 			}
+			m.RemoveAll()
 		} else {
 			response.Error = err.Error()
 			w.WriteHeader(http.StatusBadRequest)
@@ -251,7 +252,6 @@ func (h *Handler) purgeApplication(w http.ResponseWriter, r *http.Request) {
 
 func setupServer(cfg config.Config) *http.Server {
 	handler := NewHandler(cfg)
-
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handler.ping).Methods("GET")
 	router.HandleFunc("/applications", handler.listApplications).Methods("GET")
@@ -270,7 +270,6 @@ func setupServer(cfg config.Config) *http.Server {
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
 	}
-
 	return server
 }
 

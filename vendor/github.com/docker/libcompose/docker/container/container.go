@@ -180,6 +180,7 @@ func (c *Container) Run(ctx context.Context, configOverride *config.ServiceConfi
 		errCh       chan error
 		out, stderr io.Writer
 		in          io.ReadCloser
+		inFd        uintptr
 	)
 
 	if configOverride.StdinOpen {
@@ -187,8 +188,6 @@ func (c *Container) Run(ctx context.Context, configOverride *config.ServiceConfi
 	}
 	if configOverride.Tty {
 		out = os.Stdout
-	}
-	if configOverride.Tty {
 		stderr = os.Stderr
 	}
 
@@ -204,14 +203,17 @@ func (c *Container) Run(ctx context.Context, configOverride *config.ServiceConfi
 		return -1, err
 	}
 
-	// set raw terminal
-	inFd, _ := term.GetFdInfo(in)
-	state, err := term.SetRawTerminal(inFd)
-	if err != nil {
-		return -1, err
+	if configOverride.StdinOpen {
+		// set raw terminal
+		inFd, _ = term.GetFdInfo(in)
+		state, err := term.SetRawTerminal(inFd)
+		if err != nil {
+			return -1, err
+		}
+		// restore raw terminal
+		defer term.RestoreTerminal(inFd, state)
 	}
-	// restore raw terminal
-	defer term.RestoreTerminal(inFd, state)
+
 	// holdHijackedConnection (in goroutine)
 	errCh = promise.Go(func() error {
 		return holdHijackedConnection(configOverride.Tty, in, out, stderr, resp)
@@ -219,6 +221,22 @@ func (c *Container) Run(ctx context.Context, configOverride *config.ServiceConfi
 
 	if err := c.client.ContainerStart(ctx, c.container.ID, types.ContainerStartOptions{}); err != nil {
 		return -1, err
+	}
+
+	if configOverride.Tty {
+		ws, err := term.GetWinsize(inFd)
+		if err != nil {
+			return -1, err
+		}
+
+		resizeOpts := types.ResizeOptions{
+			Height: uint(ws.Height),
+			Width:  uint(ws.Width),
+		}
+
+		if err := c.client.ContainerResize(ctx, c.container.ID, resizeOpts); err != nil {
+			return -1, err
+		}
 	}
 
 	if err := <-errCh; err != nil {

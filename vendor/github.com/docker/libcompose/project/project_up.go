@@ -14,7 +14,8 @@ func (p *Project) Up(ctx context.Context, options options.Up, services ...string
 	}
 	return p.perform(events.ProjectUpStart, events.ProjectUpDone, services, wrapperAction(func(wrapper *serviceWrapper, wrappers map[string]*serviceWrapper) {
 		wrapper.Do(wrappers, events.ServiceUpStart, events.ServiceUp, func(service Service) error {
-			return service.Up(ctx, options)
+			serviceConfig,_ := p.ServiceConfigs.Get(service.Name())
+			return service.Up(serviceConfig, ctx, options)
 		})
 	}), func(service Service) error {
 		return service.Create(ctx, options.Create)

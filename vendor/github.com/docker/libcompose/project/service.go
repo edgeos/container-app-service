@@ -27,7 +27,7 @@ type Service interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context, timeout int) error
 	Unpause(ctx context.Context) error
-	Up(ctx context.Context, options options.Up) error
+	Up(serviceConfig *config.ServiceConfig, ctx context.Context, options options.Up) error
 
 	RemoveImage(ctx context.Context, imageType options.ImageType) error
 	Containers(ctx context.Context) ([]Container, error)

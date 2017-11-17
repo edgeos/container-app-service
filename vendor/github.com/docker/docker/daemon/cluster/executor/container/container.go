@@ -328,6 +328,9 @@ func convertMount(m api.Mount) enginemount.Mount {
 
 func (c *containerConfig) healthcheck() *enginecontainer.HealthConfig {
 	hcSpec := c.spec().Healthcheck
+
+fmt.Printf("In docker/docker/daemon/cluster/executor/container/container.go, healthcheck() function, after hcSpec := c.spec().Healthcheck, hcSpec=%v\n", hcSpec)
+
 	if hcSpec == nil {
 		return nil
 	}

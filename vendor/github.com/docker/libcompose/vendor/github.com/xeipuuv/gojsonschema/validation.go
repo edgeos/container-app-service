@@ -39,7 +39,6 @@ func Validate(ls JSONLoader, ld JSONLoader) (*Result, error) {
 	var err error
 
 	// load schema
-
 	schema, err := NewSchema(ls)
 	if err != nil {
 		return nil, err

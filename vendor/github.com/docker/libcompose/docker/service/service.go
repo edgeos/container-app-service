@@ -226,7 +226,7 @@ func (s *Service) constructContainers(ctx context.Context, count int) ([]*contai
 
 // Up implements Service.Up. It builds the image if needed, creates a container
 // and start it.
-func (s *Service) Up(ctx context.Context, options options.Up) error {
+func (s *Service) Up(serviceConfig *config.ServiceConfig, ctx context.Context, options options.Up) error {
 	containers, err := s.collectContainers(ctx)
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func (s *Service) Up(ctx context.Context, options options.Up) error {
 		}
 	}
 
-	return s.up(ctx, imageName, true, options)
+	return s.up(serviceConfig, ctx, imageName, true, options)
 }
 
 // Run implements Service.Run. It runs a one of command within the service container.
@@ -257,7 +257,7 @@ func (s *Service) Run(ctx context.Context, commandParts []string, options option
 		return -1, err
 	}
 
-	configOverride := &config.ServiceConfig{Command: commandParts, Tty: true, StdinOpen: true}
+	configOverride := &config.ServiceConfig{Command: commandParts, Tty: !options.DisableTty, StdinOpen: !options.DisableTty}
 
 	c, err := s.createContainer(ctx, namer, "", configOverride, true)
 	if err != nil {
@@ -305,7 +305,7 @@ func (s *Service) Start(ctx context.Context) error {
 	})
 }
 
-func (s *Service) up(ctx context.Context, imageName string, create bool, options options.Up) error {
+func (s *Service) up(serviceConfig *config.ServiceConfig, ctx context.Context, imageName string, create bool, options options.Up) error {
 	containers, err := s.collectContainers(ctx)
 	if err != nil {
 		return err
@@ -318,7 +318,11 @@ func (s *Service) up(ctx context.Context, imageName string, create bool, options
 		if err != nil {
 			return err
 		}
-		c, err := s.createContainer(ctx, namer, "", nil, false)
+		configOverride := new(config.ServiceConfig)
+		if serviceConfig.Healthcheck != nil {
+			configOverride.Healthcheck = serviceConfig.Healthcheck
+		}
+		c, err := s.createContainer(ctx, namer, "", configOverride, false)
 		if err != nil {
 			return err
 		}
@@ -357,7 +361,7 @@ func (s *Service) connectContainerToNetworks(ctx context.Context, c *container.C
 	}
 	if s.serviceConfig.Networks != nil {
 		for _, network := range s.serviceConfig.Networks.Networks {
-			existingNetwork, ok := connectedNetworks[network.Name]
+			existingNetwork, ok := connectedNetworks[network.RealName]
 			if ok {
 				// FIXME(vdemeester) implement alias checking (to not disconnect/reconnect for nothing)
 				aliasPresent := false
@@ -525,6 +529,7 @@ func (s *Service) eachContainer(ctx context.Context, containers []*container.Con
 
 // Stop implements Service.Stop. It stops any containers related to the service.
 func (s *Service) Stop(ctx context.Context, timeout int) error {
+	timeout = s.stopTimeout(timeout)
 	return s.collectContainersAndDo(ctx, func(c *container.Container) error {
 		return c.Stop(ctx, timeout)
 	})
@@ -532,6 +537,7 @@ func (s *Service) Stop(ctx context.Context, timeout int) error {
 
 // Restart implements Service.Restart. It restarts any containers related to the service.
 func (s *Service) Restart(ctx context.Context, timeout int) error {
+	timeout = s.stopTimeout(timeout)
 	return s.collectContainersAndDo(ctx, func(c *container.Container) error {
 		return c.Restart(ctx, timeout)
 	})
@@ -587,6 +593,7 @@ func (s *Service) Scale(ctx context.Context, scale int, timeout int) error {
 		for _, c := range containers {
 			foundCount++
 			if foundCount > scale {
+				timeout = s.stopTimeout(timeout)
 				if err := c.Stop(ctx, timeout); err != nil {
 					return err
 				}
@@ -613,7 +620,7 @@ func (s *Service) Scale(ctx context.Context, scale int, timeout int) error {
 		}
 	}
 
-	return s.up(ctx, "", false, options.Up{})
+	return s.up(nil, ctx, "", false, options.Up{})
 }
 
 // Pull implements Service.Pull. It pulls the image of the service and skip the service that
@@ -727,4 +734,20 @@ func (s *Service) specificiesHostPort() bool {
 	}
 
 	return false
+}
+
+//take in timeout flag from cli as parameter
+//return timeout if it is set,
+//else return stop_grace_period if it is set,
+//else return default 10s
+func (s *Service) stopTimeout(timeout int) int {
+	DEFAULTTIMEOUT := 10
+	if timeout != 0 {
+		return timeout
+	}
+	configTimeout := utils.DurationStrToSecondsInt(s.Config().StopGracePeriod)
+	if configTimeout != nil {
+		return *configTimeout
+	}
+	return DEFAULTTIMEOUT
 }

@@ -157,37 +157,61 @@ func invalidTypeMessage(service, key string, err gojsonschema.ResultError) strin
 }
 
 func validate(serviceMap RawServiceMap) error {
-	if err := setupSchemaLoaders(schemaDataV1, &schemaV1, &schemaLoaderV1, &constraintSchemaLoaderV1); err != nil {
-		return err
-	}
-
 	serviceMap = convertServiceMapKeysToStrings(serviceMap)
 
 	dataLoader := gojsonschema.NewGoLoader(serviceMap)
+
+	schema, err := schemaRegistry.GetVersion("")
+	if err != nil {
+		return err
+	}
+	schemaLoaderV1 := schema.Loader
 
 	result, err := gojsonschema.Validate(schemaLoaderV1, dataLoader)
 	if err != nil {
 		return err
 	}
 
+	schemaV1 := schema.Data
 	return generateErrorMessages(serviceMap, schemaV1, result)
 }
 
 func validateV2(serviceMap RawServiceMap) error {
-	if err := setupSchemaLoaders(servicesSchemaDataV2, &schemaV2, &schemaLoaderV2, &constraintSchemaLoaderV2); err != nil {
+	serviceMap = convertServiceMapKeysToStrings(serviceMap)
+	dataLoader := gojsonschema.NewGoLoader(serviceMap)
+
+	schema, err := schemaRegistry.GetVersion("2")
+	if err != nil {
 		return err
 	}
-
-	serviceMap = convertServiceMapKeysToStrings(serviceMap)
-
-	dataLoader := gojsonschema.NewGoLoader(serviceMap)
+	schemaLoaderV2 := schema.Loader
 
 	result, err := gojsonschema.Validate(schemaLoaderV2, dataLoader)
 	if err != nil {
 		return err
 	}
 
+	schemaV2 := schema.Data
 	return generateErrorMessages(serviceMap, schemaV2, result)
+}
+
+func validateV2_1(serviceMap RawServiceMap) error {
+	serviceMap = convertServiceMapKeysToStrings(serviceMap)
+	dataLoader := gojsonschema.NewGoLoader(serviceMap)
+
+	schema, err := schemaRegistry.GetVersion("2.1")
+	if err != nil {
+		return err
+	}
+	schemaLoaderV2_1 := schema.Loader
+
+	result, err := gojsonschema.Validate(schemaLoaderV2_1, dataLoader)
+	if err != nil {
+		return err
+	}
+
+	schemaV2_1 := schema.Data
+	return generateErrorMessages(serviceMap, schemaV2_1, result)
 }
 
 func generateErrorMessages(serviceMap RawServiceMap, schema map[string]interface{}, result *gojsonschema.Result) error {
@@ -200,7 +224,6 @@ func generateErrorMessages(serviceMap RawServiceMap, schema map[string]interface
 	if !result.Valid() {
 		for i := 0; i < len(result.Errors()); i++ {
 			err := result.Errors()[i]
-
 			if skipRootAdditionalPropertyError && err.Type() == "additional_property_not_allowed" && err.Context().String() == "(root)" {
 				skipRootAdditionalPropertyError = false
 				continue
@@ -250,15 +273,17 @@ func generateErrorMessages(serviceMap RawServiceMap, schema map[string]interface
 }
 
 func validateServiceConstraints(service RawService, serviceName string) error {
-	if err := setupSchemaLoaders(schemaDataV1, &schemaV1, &schemaLoaderV1, &constraintSchemaLoaderV1); err != nil {
-		return err
-	}
-
 	service = convertServiceKeysToStrings(service)
 
 	var validationErrors []string
 
 	dataLoader := gojsonschema.NewGoLoader(service)
+
+	schema, err := schemaRegistry.GetVersion("")
+	if err != nil {
+		return err
+	}
+	constraintSchemaLoaderV1 := schema.ConstraintsLoader
 
 	result, err := gojsonschema.Validate(constraintSchemaLoaderV1, dataLoader)
 	if err != nil {
@@ -289,17 +314,54 @@ func validateServiceConstraints(service RawService, serviceName string) error {
 }
 
 func validateServiceConstraintsv2(service RawService, serviceName string) error {
-	if err := setupSchemaLoaders(servicesSchemaDataV2, &schemaV2, &schemaLoaderV2, &constraintSchemaLoaderV2); err != nil {
-		return err
-	}
-
 	service = convertServiceKeysToStrings(service)
 
 	var validationErrors []string
 
 	dataLoader := gojsonschema.NewGoLoader(service)
 
+	schema, err := schemaRegistry.GetVersion("2")
+	if err != nil {
+		return err
+	}
+	constraintSchemaLoaderV2 := schema.ConstraintsLoader
+
 	result, err := gojsonschema.Validate(constraintSchemaLoaderV2, dataLoader)
+	if err != nil {
+		return err
+	}
+
+	if !result.Valid() {
+		for _, err := range result.Errors() {
+			if err.Type() == "required" {
+				_, containsImage := service["image"]
+				_, containsBuild := service["build"]
+
+				if containsBuild || !containsImage && !containsBuild {
+					validationErrors = append(validationErrors, fmt.Sprintf("Service '%s' has neither an image nor a build context specified. At least one must be provided.", serviceName))
+				}
+			}
+		}
+		return fmt.Errorf(strings.Join(validationErrors, "\n"))
+	}
+
+	return nil
+}
+
+func validateServiceConstraintsv2_1(service RawService, serviceName string) error {
+	service = convertServiceKeysToStrings(service)
+
+	var validationErrors []string
+
+	dataLoader := gojsonschema.NewGoLoader(service)
+
+	schema, err := schemaRegistry.GetVersion("2.1")
+	if err != nil {
+		return err
+	}
+	constraintSchemaLoaderV2_1 := schema.ConstraintsLoader
+
+	result, err := gojsonschema.Validate(constraintSchemaLoaderV2_1, dataLoader)
 	if err != nil {
 		return err
 	}

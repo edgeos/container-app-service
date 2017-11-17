@@ -27,7 +27,6 @@
 package gojsonschema
 
 import (
-	//	"encoding/json"
 	"errors"
 	"reflect"
 	"regexp"
@@ -68,7 +67,6 @@ func (d *Schema) SetRootSchemaName(name string) {
 // then the values are copied into subSchema struct
 //
 func (d *Schema) parseSchema(documentNode interface{}, currentSchema *subSchema) error {
-
 	if !isKind(documentNode, reflect.Map) {
 		return errors.New(formatErrorDescription(
 			Locale.InvalidType(),
