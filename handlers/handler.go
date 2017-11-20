@@ -3,7 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"sync"
 	"time"
@@ -263,9 +265,7 @@ func setupServer(cfg config.Config) *http.Server {
 	router.HandleFunc("/application/status/{id}", handler.statusApplication).Methods("GET")
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
 
-	listenAddr := cfg.ListenAddress
 	server := &http.Server{
-		Addr:         listenAddr,
 		Handler:      router,
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
@@ -279,10 +279,22 @@ func Start(cfg config.Config) {
 	for {
 		once := sync.Once{}
 		utils.RetryWithBackoff(utils.NewSimpleBackoff(time.Second, time.Minute, 0.2, 2), func() error {
-			err := server.ListenAndServe()
+			// Intentionally ignore error, socket might not exist
+			_ = os.Remove(cfg.ListenAddress)
+
+			cappsd_sock, err := net.Listen("unix", cfg.ListenAddress)
+
+			if err != nil {
+				log.Println("Error binding socket - ", err)
+				return err
+			}
+
+			err = server.Serve(cappsd_sock)
+
 			once.Do(func() {
 				log.Println("Error running http api - ", err)
 			})
+
 			return err
 		})
 	}

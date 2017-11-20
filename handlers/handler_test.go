@@ -10,6 +10,8 @@ import (
   "bytes"
   "mime/multipart"
   "time"
+  "context"
+  "net"
   "net/http"
   "testing"
   "log"
@@ -38,9 +40,7 @@ func setupServerInTest(cfg config.Config) *http.Server {
 	router.HandleFunc("/application/status/{id}", handler.statusApplication).Methods("GET")
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
 
-	listenAddr := cfg.ListenAddress
 	server := &http.Server{
-		Addr:         listenAddr,
 		Handler:      router,
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Second,
@@ -53,27 +53,25 @@ func StartInTest(cfg config.Config) {
 	for {
 		once := sync.Once{}
 		utils.RetryWithBackoff(utils.NewSimpleBackoff(time.Second, time.Minute, 0.2, 2), func() error {
-			err := server.ListenAndServe()
+			// Intentionally ignore error, file might not exist.
+			_ = os.Remove(cfg.ListenAddress)
+
+			cappsd_sock, err := net.Listen("unix", cfg.ListenAddress)
+
+			if err != nil {
+				log.Println("Error binding socket - ", err)
+				return err
+			}
+
+			err = server.Serve(cappsd_sock)
+
 			once.Do(func() {
 				log.Println("Error running http api - ", err)
 			})
+
 			return err
 		})
 	}
-}
-
-func Setup(t *testing.T, configPath string) error {
-  var err error
-  cfg, err := config.NewConfig(configPath)
-  if err == nil {
-    go StartInTest(cfg)
-    // Wait 5 seconds to make sure the server starts first before sending the POST request
-    time.Sleep(5*time.Second)
-  } else {
-    t.Error("Failed to create new config! err is: ", err)
-    t.Fail()
-  }
-  return err
 }
 
 func Teardown(t *testing.T) error {
@@ -107,25 +105,46 @@ func TestNewHandler(t *testing.T) {
 }
 
 func TestAllHandlers(t *testing.T) {
-  Setup(t, configFilePath)
+  var err error
 
-  PingTest(t)
-  DeployApplicationDTRTest(t)
-  ListApplicationsTest(t)
-  GetApplicationTest(t)
-  DeployApplicationTARTest(t)
+  cfg, err := config.NewConfig(configFilePath)
+
+  if err != nil {
+    t.Error("Failed to create new config! err is: ", err)
+    t.Fail()
+  }
+
+  cfg.ListenAddress = "/tmp/cappsd-test.sock"
+
+  go StartInTest(cfg)
+
+  // Wait 5 seconds to make sure the server starts first before sending the POST request
+  time.Sleep(5*time.Second)
+
+  PingTest(t, cfg)
+  DeployApplicationDTRTest(t, cfg)
+  ListApplicationsTest(t, cfg)
+  GetApplicationTest(t, cfg)
+  DeployApplicationTARTest(t, cfg)
 
   Teardown(t)
 }
 
-func PingTest(t *testing.T) {
-  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/ping", nil)
+func PingTest(t *testing.T, cfg config.Config) {
+  req, err := http.NewRequest("GET", "http://unix/ping", nil)
   if err != nil {
     t.Error("Failed in creating http ping request!")
     t.Fail()
   }
 
-  client := &http.Client{}
+  client := &http.Client{
+    Transport: &http.Transport{
+      DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+        return net.Dial("unix", cfg.ListenAddress)
+      },
+    },
+  }
+
   resp, err := client.Do(req)
   if err != nil {
     t.Error("Failed in executing the http ping request! err is: ", err)
@@ -142,14 +161,21 @@ func PingTest(t *testing.T) {
   fmt.Println("Passed Ping Test")
 }
 
-func ListApplicationsTest(t *testing.T) {
-  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/applications", nil)
+func ListApplicationsTest(t *testing.T, cfg config.Config) {
+  req, err := http.NewRequest("GET", "http://unix/applications", nil)
   if err != nil {
     t.Error("Failed in creating http ListApplications request!")
     t.Fail()
   }
 
-  client := &http.Client{}
+  client := &http.Client{
+    Transport: &http.Transport{
+      DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+        return net.Dial("unix", cfg.ListenAddress)
+      },
+    },
+  }
+
   resp, err := client.Do(req)
   if err != nil {
     t.Error("Failed in executing the http ListApplications request! err is: ", err)
@@ -175,15 +201,22 @@ func ListApplicationsTest(t *testing.T) {
   fmt.Println("Passed ListApplications Test")
 }
 
-func GetApplicationTest(t *testing.T) {
+func GetApplicationTest(t *testing.T, cfg config.Config) {
   appId := idSlice[0]
-  req, err := http.NewRequest("GET", "http://127.0.0.1:9000/application/" + appId, nil)
+  req, err := http.NewRequest("GET", "http://unix/application/" + appId, nil)
   if err != nil {
     t.Error("Failed in creating http GetApplication request!")
     t.Fail()
   }
 
-  client := &http.Client{}
+  client := &http.Client{
+    Transport: &http.Transport{
+      DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+        return net.Dial("unix", cfg.ListenAddress)
+      },
+    },
+  }
+
   resp, err := client.Do(req)
   if err != nil {
     t.Error("Failed in executing the http GetApplication request! err is: ", err)
@@ -209,7 +242,7 @@ func GetApplicationTest(t *testing.T) {
   fmt.Println("Passed GetApplication Test")
 }
 
-func DeployApplicationDTRTest(t *testing.T) {
+func DeployApplicationDTRTest(t *testing.T, cfg config.Config) {
     // Add file to POST request body
     var body bytes.Buffer
     writer := multipart.NewWriter(&body)
@@ -234,14 +267,20 @@ func DeployApplicationDTRTest(t *testing.T) {
 
     writer.Close()
 
-    req, err := http.NewRequest("POST", "http://127.0.0.1:9000/application/deploy", &body)
+    req, err := http.NewRequest("POST", "http://unix/application/deploy", &body)
     if err != nil {
       t.Error("Failed in creating http application deploy request!")
       t.Fail()
     }
     req.Header.Set("Content-Type", writer.FormDataContentType())
 
-    client := &http.Client{}
+    client := &http.Client{
+      Transport: &http.Transport{
+        DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+          return net.Dial("unix", cfg.ListenAddress)
+        },
+      },
+    }
     resp, err := client.Do(req)
     if err != nil {
       t.Error("Failed in executing the http request! err is: ", err)
@@ -268,7 +307,7 @@ func DeployApplicationDTRTest(t *testing.T) {
     fmt.Println("Passed DeployApplicationDTR Test")
 }
 
-func DeployApplicationTARTest(t *testing.T) {
+func DeployApplicationTARTest(t *testing.T, cfg config.Config) {
   // Add file to POST request body
   var body bytes.Buffer
   writer := multipart.NewWriter(&body)
@@ -293,14 +332,21 @@ func DeployApplicationTARTest(t *testing.T) {
 
   writer.Close()
 
-  req, err := http.NewRequest("POST", "http://127.0.0.1:9000/application/deploy", &body)
+  req, err := http.NewRequest("POST", "http://unix/application/deploy", &body)
   if err != nil {
     t.Error("Failed in creating http application deploy request!")
     t.Fail()
   }
   req.Header.Set("Content-Type", writer.FormDataContentType())
 
-  client := &http.Client{}
+  client := &http.Client{
+    Transport: &http.Transport{
+      DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+        return net.Dial("unix", cfg.ListenAddress)
+      },
+    },
+  }
+
   resp, err := client.Do(req)
   if err != nil {
     t.Error("Failed in executing the http request! err is: ", err)
