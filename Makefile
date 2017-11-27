@@ -121,6 +121,7 @@ build-dirs:
 fetch-deps: build-dirs .builder-$(ARCH)
 	@echo "populating local .go tree ... "
 	@docker run                                                            \
+		--rm                                                               \
 		-t                                                                 \
 		$(DOCKER_USER)                                                     \
 		$(PROXY_ARGS)                                                      \
@@ -139,6 +140,7 @@ bin/$(ARCH)/$(NAME): fetch-deps
 	@echo "building: $@"
 	@echo $(DOCKER_USER)
 	@docker run                                                            \
+		--rm                                                               \
 		-t                                                                 \
 		$(DOCKER_USER)                                                     \
 		$(PROXY_ARGS)                                                      \
@@ -262,6 +264,9 @@ image-clean:
 	fi
 	@if [ $(shell docker images | grep $(IMAGE) | wc -l) != 0 ]; then \
 		docker images | grep $(IMAGE) | awk '{print $$3}' | xargs docker rmi -f || true; \
+	fi
+	@if [ $(shell docker images | grep $(NAME)-$(ARCH) | wc -l) != 0 ]; then \
+		docker images | grep $(NAME)-$(ARCH) | awk '{print $$3}' | xargs docker rmi -f || true; \
 	fi
 	rm -rf .image-* .dockerfile-* .push-* .builder-*
 
