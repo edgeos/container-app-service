@@ -115,43 +115,56 @@ func NewDocker(c config.Config) *Docker {
 
 // Init ...
 func (p *Docker) Init() error {
-	NewListener(p)
+  NewListener(p)
 
-	utils.Load(p.Cfg.DataVolume+"/application.json", p.Apps)
+  var data map[string]ComposeApp
+  utils.Load(p.Cfg.DataVolume+"/application.json", &data)
 
-	for id := range p.Apps {
-		info := p.Apps[id].Info
+  p.Apps = make(map[string]*ComposeApp)
+  for id := range data {
+    p.Apps[id] = &ComposeApp{
+      Info: types.App{
+        UUID:    id,
+        Name:    data[id].Info.Name,
+        Version: data[id].Info.Version,
+        Path:    data[id].Info.Path,
+        Monitor: data[id].Info.Monitor,
+      },
+      Monitor: false,
+      Active:  false,
+    }
 
-		composeFile := info.Path + "/docker-compose.yml"
-		c := ctx.Context{
-			Context: project.Context{
-				ComposeFiles: []string{composeFile},
-				ProjectName:  id,
-			},
-		}
+    composeFile := p.Apps[id].Info.Path + "/docker-compose.yml"
+    c := ctx.Context{
+      Context: project.Context{
+        ComposeFiles: []string{composeFile},
+        ProjectName:  id,
+      },
+    }
 
-		var err error
-		var prj project.APIProject
-		if prj, err = docker.NewProject(&c, nil); err == nil {
-			p.Apps[id].Client = prj
-			err = prj.Up(context.Background(), options.Up{})
-			if err == nil {
-				eventstream, _ := p.Apps[id].Client.Events(context.Background())
-				p.Apps[id].Events = eventstream
-				p.Apps[id].Active = true
-				if strings.EqualFold(info.Monitor, "yes") {
-					p.Apps[id].Monitor = true
-				} else {
-					p.Apps[id].Monitor = false
-				}
-			}
-		} else {
-			delete(p.Apps, id)
-			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
-		}
-	}
-	return nil
+    var err error
+    var prj project.APIProject
+    if prj, err = docker.NewProject(&c, nil); err == nil {
+      p.Apps[id].Client = prj
+      err = prj.Up(context.Background(), options.Up{})
+      if err == nil {
+        eventstream, _ := p.Apps[id].Client.Events(context.Background())
+        p.Apps[id].Events = eventstream
+        p.Apps[id].Active = true
+        if strings.EqualFold(p.Apps[id].Info.Monitor, "yes") {
+          p.Apps[id].Monitor = true
+        } else {
+          p.Apps[id].Monitor = false
+        }
+      }
+    } else {
+      delete(p.Apps, id)
+      utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
+    }
+  }
+  return nil
 }
+
 
 // Deploy ...
 func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, error) {
