@@ -1,6 +1,6 @@
 {
-    "listen_address": "/tmp/cappsd.sock",
-    "data_volume": "/tmp",
+    "listen_address": "/var/run/cappsd.sock",
+    "data_volume": "/mnt/data",
     "read_timeout": 30,
     "write_timeout:": 30,
 

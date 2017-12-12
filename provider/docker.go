@@ -110,7 +110,6 @@ func (l *EventListener) start() {
 						}
 					}
 				default:
-					//do nothing
 			}
 		}
 		l.provider.Lock.RUnlock()
