@@ -1,0 +1,132 @@
+{
+	"variables": [],
+	"info": {
+		"name": "Edge Container Service",
+		"_postman_id": "b08410b6-4437-b154-e211-bfdeb1f5fc89",
+		"description": "",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "127.0.0.1:8000/ping",
+			"request": {
+				"url": "127.0.0.1:8000/ping",
+				"method": "GET",
+				"header": [],
+				"body": {},
+				"description": "Ping service"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/applications",
+			"request": {
+				"url": "127.0.0.1:8000/applications",
+				"method": "GET",
+				"header": [],
+				"body": {},
+				"description": "List deployed applications"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/{id}",
+			"request": {
+				"url": "127.0.0.1:8000/application/1",
+				"method": "GET",
+				"header": [],
+				"body": {},
+				"description": "Get application details"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/deploy",
+			"request": {
+				"url": "127.0.0.1:8000/application/deploy",
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "metadata",
+							"value": "{ \"Name\": \"testapp\", \"Version\": \"1.0\" }",
+							"type": "text",
+							"enabled": true
+						},
+						{
+							"key": "artifact",
+							"type": "file",
+							"enabled": true,
+							"src": "jri-do.tar.gz"
+						},
+						{
+							"key": "",
+							"value": "",
+							"type": "text",
+							"enabled": false
+						}
+					]
+				},
+				"description": "Deploy and start application using provided package"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/restart/{id}",
+			"request": {
+				"url": "127.0.0.1:8000/application/restart/479cd300-3332-4f9c-9ae8-afcaa05e7703",
+				"method": "POST",
+				"header": [],
+				"body": {},
+				"description": "Status of specified application"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/start/{id}",
+			"request": {
+				"url": "127.0.0.1:8000/application/start/1",
+				"method": "POST",
+				"header": [],
+				"body": {},
+				"description": "Start specified application"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/stop/{id} copy",
+			"request": {
+				"url": "127.0.0.1:8000/application/stop/1",
+				"method": "POST",
+				"header": [],
+				"body": {},
+				"description": "Stop specified application"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/status/{id}",
+			"request": {
+				"url": "127.0.0.1:8000/application/status/92a8662a-7682-4069-898b-e7e48eb779f5",
+				"method": "GET",
+				"header": [],
+				"body": {},
+				"description": "Status of specified application"
+			},
+			"response": []
+		},
+		{
+			"name": "127.0.0.1:8000/application/purge/{id}",
+			"request": {
+				"url": "127.0.0.1:8000/application/purge/1",
+				"method": "POST",
+				"header": [],
+				"body": {},
+				"description": "Purge specified application and associated data"
+			},
+			"response": []
+		}
+	]
+}

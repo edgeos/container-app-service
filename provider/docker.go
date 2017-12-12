@@ -38,6 +38,7 @@ type Docker struct {
 	Cfg  config.Config
 	Apps map[string]*ComposeApp
 	Lock sync.RWMutex
+	IsHealthyMap map[string](map[string]bool)
 }
 
 // EventListener ...
@@ -84,24 +85,36 @@ func LoadImage(infilePath *string) error {
 
 // start ...
 func (l *EventListener) start() {
+	for id := range l.provider.Apps {
+		l.provider.IsHealthyMap[id] = make(map[string]bool)
+		app := l.provider.Apps[id].Client.(*project.Project)
+		for name, _ := range app.ServiceConfigs.All() {
+			l.provider.IsHealthyMap[id][name] = true;
+		}
+	}
+
 	for {
 		l.provider.Lock.RLock()
 		for id := range l.provider.Apps {
 			eventstream := l.provider.Apps[id].Events
-
 			select {
-			case event := <-eventstream:
-				if l.provider.Apps[id].Active == true && l.provider.Apps[id].Monitor == true {
-					if event.Event == "health_status: unhealthy" || event.Event == "stop" {
-						l.provider.Apps[id].Client.Restart(context.Background(), 5, event.Service)
+				case event := <-eventstream:
+					if l.provider.Apps[id].Active == true && l.provider.Apps[id].Monitor == true {
+						if event.Event == "health_status: unhealthy" {
+							l.provider.IsHealthyMap[id][event.Service] = false
+							l.provider.Apps[id].Client.Restart(context.Background(), 5, event.Service)
+						} else if event.Event == "health_status: healthy" {
+							l.provider.IsHealthyMap[id][event.Service] = true
+						} else if l.provider.IsHealthyMap[id][event.Service] == true && event.Event == "stop" {
+							l.provider.Apps[id].Client.Start(context.Background(), event.Service)
+						}
 					}
-				}
-			default:
-				// do nothing
+				default:
+					//do nothing
 			}
 		}
 		l.provider.Lock.RUnlock()
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 	}
 }
 
@@ -109,14 +122,13 @@ func (l *EventListener) start() {
 func NewDocker(c config.Config) *Docker {
 	provider := new(Docker)
 	provider.Apps = make(map[string]*ComposeApp)
+	provider.IsHealthyMap = make(map[string](map[string]bool))
 	provider.Cfg = c
 	return provider
 }
 
-// Init ...
+// Init ...app.
 func (p *Docker) Init() error {
-  NewListener(p)
-
   var data map[string]ComposeApp
   utils.Load(p.Cfg.DataVolume+"/application.json", &data)
 
@@ -146,6 +158,10 @@ func (p *Docker) Init() error {
     var prj project.APIProject
     if prj, err = docker.NewProject(&c, nil); err == nil {
       p.Apps[id].Client = prj
+			// Stop running docker containers for the app first
+			if err = p.Apps[id].Client.Down(context.Background(), options.Down{}); err != nil {
+				return err
+			}
       err = prj.Up(context.Background(), options.Up{})
       if err == nil {
         eventstream, _ := p.Apps[id].Client.Events(context.Background())
@@ -162,9 +178,9 @@ func (p *Docker) Init() error {
       utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
     }
   }
+	NewListener(p)
   return nil
 }
-
 
 // Deploy ...
 func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, error) {
@@ -203,7 +219,11 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 			isMonitor := false
 			if strings.EqualFold(metadata.Monitor, "yes") {
 				isMonitor = true
-				NewListener(p)
+				p.IsHealthyMap[uuid] = make(map[string]bool)
+				app := prj.(*project.Project)
+				for name, _ := range app.ServiceConfigs.All() {
+					p.IsHealthyMap[uuid][name] = true;
+				}
 			}
 			p.Apps[uuid] = &ComposeApp{
 				Info: types.App{
