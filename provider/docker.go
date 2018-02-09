@@ -9,6 +9,7 @@ import (
 
 	"io/ioutil"
 	"strings"
+	"encoding/json"
 
 	"github.com/docker/docker/client"
 
@@ -68,6 +69,17 @@ func LoadImage(infilePath *string) error {
 			body, err := ioutil.ReadAll(imageLoadResponse.Body)
 			if err != nil {
 				return err
+			}
+			// Docker returns a new line separated list of json, so iterate over it and check for errors
+			for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+				var lineJson interface{}
+				err = json.Unmarshal([]byte(line), &lineJson)
+				if err != nil {
+					return err
+				}
+				if val, ok := lineJson.(map[string]interface{})["error"]; ok {
+					return errors.New(string(val.(string)))
+				}
 			}
 			if !strings.Contains(string(body), "Loaded image") {
 				time.Sleep(3 * time.Second)
@@ -130,7 +142,6 @@ func NewDocker(c config.Config) *Docker {
 func (p *Docker) Init() error {
   var data map[string]ComposeApp
   utils.Load(p.Cfg.DataVolume+"/application.json", &data)
-
   p.Apps = make(map[string]*ComposeApp)
   for id := range data {
     p.Apps[id] = &ComposeApp{
@@ -140,9 +151,10 @@ func (p *Docker) Init() error {
         Version: data[id].Info.Version,
         Path:    data[id].Info.Path,
         Monitor: data[id].Info.Monitor,
+				Active:  data[id].Info.Active,
       },
-      Monitor: false,
-      Active:  false,
+      Monitor: strings.EqualFold(data[id].Info.Monitor, "yes"),
+      Active:  strings.EqualFold(data[id].Info.Active, "yes"),
     }
 
     composeFile := p.Apps[id].Info.Path + "/docker-compose.yml"
@@ -157,21 +169,18 @@ func (p *Docker) Init() error {
     var prj project.APIProject
     if prj, err = docker.NewProject(&c, nil); err == nil {
       p.Apps[id].Client = prj
-			// Stop running docker containers for the app first
-			if err = p.Apps[id].Client.Down(context.Background(), options.Down{}); err != nil {
-				return err
+			if p.Apps[id].Active == true {
+				// Stop running docker containers for the app first
+				if err = p.Apps[id].Client.Down(context.Background(), options.Down{}); err != nil {
+					return err
+				}
+
+      	err = prj.Up(context.Background(), options.Up{})
+	      if err == nil {
+	        eventstream, _ := p.Apps[id].Client.Events(context.Background())
+	        p.Apps[id].Events = eventstream
+	      }
 			}
-      err = prj.Up(context.Background(), options.Up{})
-      if err == nil {
-        eventstream, _ := p.Apps[id].Client.Events(context.Background())
-        p.Apps[id].Events = eventstream
-        p.Apps[id].Active = true
-        if strings.EqualFold(p.Apps[id].Info.Monitor, "yes") {
-          p.Apps[id].Monitor = true
-        } else {
-          p.Apps[id].Monitor = false
-        }
-      }
     } else {
       delete(p.Apps, id)
       utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
@@ -200,7 +209,11 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				if strings.Contains(f.Name(), ".tar") {
 					var infile = new(string)
 					*infile = path + "/" + f.Name()
-					LoadImage(infile)
+					err = LoadImage(infile)
+					if err != nil {
+					    os.RemoveAll(path)
+					    return nil, err
+					}
 				}
 			}
 		}
@@ -231,18 +244,20 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 					Version: metadata.Version,
 					Path:    path,
 					Monitor: metadata.Monitor,
+					Active:	 "no",
 				},
 				Client:  prj,
 				Monitor: isMonitor,
 				Active: false,
 			}
 
-			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			err = prj.Up(context.Background(), options.Up{})
 			if err == nil {
 				eventstream, _ := p.Apps[uuid].Client.Events(context.Background())
 				p.Apps[uuid].Events = eventstream
 				p.Apps[uuid].Active = true
+				p.Apps[uuid].Info.Active = "yes"
+				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 				info := p.Apps[uuid].Info
 				return &info, nil
 			} else {
@@ -291,6 +306,8 @@ func (p *Docker) Start(id string) error {
 	if exists {
 		if err = app.Client.Up(context.Background(), options.Up{}); err == nil {
 			p.Apps[id].Active = true
+			p.Apps[id].Info.Active = "yes"
+			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil
 		}
 		return err
@@ -308,7 +325,9 @@ func (p *Docker) Stop(id string) error {
 	app, exists := p.Apps[id]
 	if exists {
 		p.Apps[id].Active = false
+		p.Apps[id].Info.Active = "no"
 		if err = app.Client.Down(context.Background(), options.Down{}); err == nil {
+			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil
 		}
 		return err
@@ -329,6 +348,8 @@ func (p *Docker) Restart(id string) error {
 		app.Client.Down(context.Background(), options.Down{})
 		if err = app.Client.Up(context.Background(), options.Up{}); err == nil {
 			p.Apps[id].Active = true
+			p.Apps[id].Info.Active = "yes"
+			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil
 		}
 		return err

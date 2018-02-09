@@ -29,6 +29,7 @@ type App struct {
 	Version string `json:"version"`
 	Path    string `json:"path"`
 	Monitor	string `json:"monitor"`
+	Active	string `json:"active"`
 }
 
 //AppDetails ...

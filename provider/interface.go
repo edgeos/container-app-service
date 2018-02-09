@@ -25,6 +25,9 @@ type Provider interface {
 // NewProvider ...
 func NewProvider(c config.Config) Provider {
 	p := NewDocker(c)
-	p.Init()
-	return p
+	if err := p.Init(); err != nil {
+		return nil
+	} else {
+		return p
+	}
 }
