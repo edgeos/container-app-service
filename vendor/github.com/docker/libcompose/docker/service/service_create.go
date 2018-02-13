@@ -23,7 +23,7 @@ import (
 func (s *Service) createContainer(ctx context.Context, namer Namer, oldContainer string, configOverride *config.ServiceConfig, oneOff bool) (*composecontainer.Container, error) {
 	serviceConfig := s.serviceConfig
 	if configOverride != nil {
-		serviceConfig.Command = configOverride.Command
+		if configOverride.Command != nil { serviceConfig.Command = configOverride.Command }
 		serviceConfig.Tty = configOverride.Tty
 		serviceConfig.StdinOpen = configOverride.StdinOpen
 	}
