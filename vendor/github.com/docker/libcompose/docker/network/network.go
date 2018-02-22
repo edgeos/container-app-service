@@ -44,8 +44,14 @@ func (n *Network) Remove(ctx context.Context) error {
 		fmt.Printf("Network %s is external, skipping", n.fullName())
 		return nil
 	}
-	fmt.Printf("Removing network %q\n", n.fullName())
-	return n.client.NetworkRemove(ctx, n.fullName())
+
+	err := n.EnsureItExists(ctx)
+	if (err == nil ) {
+		fmt.Printf("Removing network %q\n", n.fullName())
+		return n.client.NetworkRemove(ctx, n.fullName())
+	} else {
+		return nil
+	}
 }
 
 // EnsureItExists make sure the network exists and return an error if it does not exists
