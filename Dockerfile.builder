@@ -1,4 +1,4 @@
-FROM registry.gear.ge.com/predix_edge/golang-#{ARCH}:1.8
+FROM registry.gear.ge.com/predix_edge/golang-amd64:1.8
 
 RUN set -ex \
 	&& mkdir -p /mnt/data \
