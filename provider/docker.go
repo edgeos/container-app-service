@@ -269,8 +269,9 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 				return nil, err
 			}
-		} else {
+		} else {	
 			os.RemoveAll(path)
+			return nil, err
 		}
 	}
 

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"errors"
 
 	"reflect"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/pkg/urlutil"
 	"github.com/docker/libcompose/utils"
 	composeYaml "github.com/docker/libcompose/yaml"
@@ -121,7 +121,8 @@ func Merge(existingServices *ServiceConfigs, environmentLookup EnvironmentLookup
 
 	switch major {
 	case 3:
-		logrus.Fatal("Note: Compose file version 3 is not yet implemented")
+		err := errors.New("Note: Compose file version 3 is not yet implemented")
+		return "", nil, nil, nil, err
 	case 2:
 		var err error
 		switch minor {
