@@ -4,11 +4,12 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -45,25 +46,28 @@ func Unpack(source io.Reader, target string) error {
 		}
 		path := filepath.Join(target, header.Name)
 		info := header.FileInfo()
-		log.Println(path)
-		if info.IsDir() {
-			if err = os.MkdirAll(path, info.Mode()); err != nil {
+		invalid, _ := regexp.MatchString(`^.*\.\.\/.*$`, path)
+		if invalid == false {
+			if info.IsDir() {
+				if err = os.MkdirAll(path, info.Mode()); err != nil {
+					return err
+				}
+				continue
+			}
+
+			file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+			if err != nil {
 				return err
 			}
-			continue
-		}
-
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-		_, err = io.Copy(file, tarReader)
-		if err != nil {
-			return err
+			defer file.Close()
+			_, err = io.Copy(file, tarReader)
+			if err != nil {
+				return err
+			}
+		} else {
+			return errors.New("Invalid tarball")
 		}
 	}
-
 	return nil
 }
 
