@@ -268,23 +268,47 @@ func (p *Project) load(file string, bytes []byte) error {
 
 func (p *Project) handleNetworkConfig() {
 	if p.isNetworkEnabled() {
+		//First check if a default external network exists
+		var hasDefaultExternalNetwork = false
+		var defaultExternalNetworkName = ""
+		for k, v := range p.NetworkConfigs {
+			if k == "default" && v.External.External {
+					hasDefaultExternalNetwork = true
+					defaultExternalNetworkName = v.External.Name
+					continue
+			}
+		}
+
 		for _, serviceName := range p.ServiceConfigs.Keys() {
 			serviceConfig, _ := p.ServiceConfigs.Get(serviceName)
 			if serviceConfig.NetworkMode != "" {
 				continue
 			}
 			if serviceConfig.Networks == nil || len(serviceConfig.Networks.Networks) == 0 {
-				// Add default as network
-				serviceConfig.Networks = &yaml.Networks{
-					Networks: []*yaml.Network{
-						{
-							Name:     "default",
-							RealName: fmt.Sprintf("%s_%s", p.Name, "default"),
+				if hasDefaultExternalNetwork == false {
+					// Add default as network
+					serviceConfig.Networks = &yaml.Networks{
+						Networks: []*yaml.Network{
+							{
+								Name:     "default",
+								RealName: fmt.Sprintf("%s_%s", p.Name, "default"),
+							},
 						},
-					},
+					}
+					p.AddNetworkConfig("default", &config.NetworkConfig{})
+				} else {
+					// Add default external network
+					serviceConfig.Networks = &yaml.Networks{
+						Networks: []*yaml.Network{
+							{
+								Name:     "default",
+								RealName: defaultExternalNetworkName,
+							},
+						},
+					}
 				}
-				p.AddNetworkConfig("default", &config.NetworkConfig{})
 			}
+
 			// Consolidate the name of the network
 			// FIXME(vdemeester) probably shouldn't be there, maybe move that to interface/factory
 			for _, network := range serviceConfig.Networks.Networks {
