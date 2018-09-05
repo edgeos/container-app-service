@@ -111,7 +111,7 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file); err == nil {
+					if app, err := h.provider.Deploy(metadata, file, artifacts[i].Filename); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version
@@ -252,6 +252,26 @@ func (h *Handler) purgeApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) killApplication(w http.ResponseWriter, r *http.Request) {
+	response := BasicResponse{Status: Ok, Error: ""}
+
+	vars := mux.Vars(r)
+	id, exists := vars["id"]
+	if exists {
+		if err := h.provider.Kill(id); err != nil {
+			response.Status = Fail
+			response.Error = err.Error()
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	} else {
+		response.Status = Fail
+		response.Error = NoID
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func setupServer(cfg config.Config) *http.Server {
 	handler := NewHandler(cfg)
 	router := mux.NewRouter()
@@ -264,6 +284,7 @@ func setupServer(cfg config.Config) *http.Server {
 	router.HandleFunc("/application/stop/{id}", handler.stopApplication).Methods("POST")
 	router.HandleFunc("/application/status/{id}", handler.statusApplication).Methods("GET")
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
+	router.HandleFunc("/application/kill/{id}", handler.killApplication).Methods("POST")
 
 	server := &http.Server{
 		Handler:      router,
@@ -288,7 +309,11 @@ func Start(cfg config.Config) {
 				log.Println("Error binding socket - ", err)
 				return err
 			}
-
+			err = os.Chmod(cfg.ListenAddress, 0760)
+			if err != nil {
+				log.Println("Error setting socket permissions - ", err)
+				return err
+			}
 			err = server.Serve(cappsd_sock)
 
 			once.Do(func() {
