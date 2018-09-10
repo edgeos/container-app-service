@@ -1,8 +1,9 @@
 {
-    "listen_address": "/var/run/cappsd.sock",
+    "listen_address": "/var/run/cappsd/cappsd.sock",
     "data_volume": "/mnt/data",
     "read_timeout": 30,
     "write_timeout:": 30,
+    "key_location": "/key/decrypt.keyinfo",
 
     "Docker":
     {
