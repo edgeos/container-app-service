@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"encoding/json"
 	"io/ioutil"
 	"strings"
-	"encoding/json"
 
 	"github.com/docker/docker/client"
 
@@ -36,9 +36,9 @@ type ComposeApp struct {
 
 // Docker ...
 type Docker struct {
-	Cfg  config.Config
-	Apps map[string]*ComposeApp
-	Lock sync.RWMutex
+	Cfg          config.Config
+	Apps         map[string]*ComposeApp
+	Lock         sync.RWMutex
 	IsHealthyMap map[string](map[string]bool)
 }
 
@@ -64,7 +64,7 @@ func LoadImage(infilePath *string) error {
 		if err == nil {
 			imageLoadResponse, err := cli.ImageLoad(context.Background(), input, false)
 			if imageLoadResponse.JSON == false {
-				return errors.New("expected a JSON response from ImageLoad() function , was not.")
+				return errors.New("expected a JSON response from ImageLoad() function , was not")
 			}
 			body, err := ioutil.ReadAll(imageLoadResponse.Body)
 			if err != nil {
@@ -72,12 +72,12 @@ func LoadImage(infilePath *string) error {
 			}
 			// Docker returns a new line separated list of json, so iterate over it and check for errors
 			for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
-				var lineJson interface{}
-				err = json.Unmarshal([]byte(line), &lineJson)
+				var lineJSON interface{}
+				err = json.Unmarshal([]byte(line), &lineJSON)
 				if err != nil {
 					return err
 				}
-				if val, ok := lineJson.(map[string]interface{})["error"]; ok {
+				if val, ok := lineJSON.(map[string]interface{})["error"]; ok {
 					return errors.New(string(val.(string)))
 				}
 			}
@@ -100,8 +100,8 @@ func (l *EventListener) start() {
 	for id := range l.provider.Apps {
 		l.provider.IsHealthyMap[id] = make(map[string]bool)
 		app := l.provider.Apps[id].Client.(*project.Project)
-		for name, _ := range app.ServiceConfigs.All() {
-			l.provider.IsHealthyMap[id][name] = true;
+		for name := range app.ServiceConfigs.All() {
+			l.provider.IsHealthyMap[id][name] = true
 		}
 	}
 
@@ -110,18 +110,18 @@ func (l *EventListener) start() {
 		for id := range l.provider.Apps {
 			eventstream := l.provider.Apps[id].Events
 			select {
-				case event := <-eventstream:
-					if l.provider.Apps[id].Active == true && l.provider.Apps[id].Monitor == true {
-						if event.Event == "health_status: unhealthy" {
-							l.provider.IsHealthyMap[id][event.Service] = false
-							l.provider.Apps[id].Client.Restart(context.Background(), 5, event.Service)
-						} else if event.Event == "health_status: healthy" {
-							l.provider.IsHealthyMap[id][event.Service] = true
-						} else if l.provider.IsHealthyMap[id][event.Service] == true && event.Event == "stop" {
-							l.provider.Apps[id].Client.Start(context.Background(), event.Service)
-						}
+			case event := <-eventstream:
+				if l.provider.Apps[id].Active == true && l.provider.Apps[id].Monitor == true {
+					if event.Event == "health_status: unhealthy" {
+						l.provider.IsHealthyMap[id][event.Service] = false
+						l.provider.Apps[id].Client.Restart(context.Background(), 5, event.Service)
+					} else if event.Event == "health_status: healthy" {
+						l.provider.IsHealthyMap[id][event.Service] = true
+					} else if l.provider.IsHealthyMap[id][event.Service] == true && event.Event == "stop" {
+						l.provider.Apps[id].Client.Start(context.Background(), event.Service)
 					}
-				default:
+				}
+			default:
 			}
 		}
 		l.provider.Lock.RUnlock()
@@ -140,54 +140,54 @@ func NewDocker(c config.Config) *Docker {
 
 // Init ...app.
 func (p *Docker) Init() error {
-  var data map[string]ComposeApp
-  utils.Load(p.Cfg.DataVolume+"/application.json", &data)
-  p.Apps = make(map[string]*ComposeApp)
-  for id := range data {
-    p.Apps[id] = &ComposeApp{
-      Info: types.App{
-        UUID:    id,
-        Name:    data[id].Info.Name,
-        Version: data[id].Info.Version,
-        Path:    data[id].Info.Path,
-        Monitor: data[id].Info.Monitor,
+	var data map[string]ComposeApp
+	utils.Load(p.Cfg.DataVolume+"/application.json", &data)
+	p.Apps = make(map[string]*ComposeApp)
+	for id := range data {
+		p.Apps[id] = &ComposeApp{
+			Info: types.App{
+				UUID:    id,
+				Name:    data[id].Info.Name,
+				Version: data[id].Info.Version,
+				Path:    data[id].Info.Path,
+				Monitor: data[id].Info.Monitor,
 				Active:  data[id].Info.Active,
-      },
-      Monitor: strings.EqualFold(data[id].Info.Monitor, "yes"),
-      Active:  strings.EqualFold(data[id].Info.Active, "yes"),
-    }
+			},
+			Monitor: strings.EqualFold(data[id].Info.Monitor, "yes"),
+			Active:  strings.EqualFold(data[id].Info.Active, "yes"),
+		}
 
-    composeFile := p.Apps[id].Info.Path + "/docker-compose.yml"
-    c := ctx.Context{
-      Context: project.Context{
-        ComposeFiles: []string{composeFile},
-        ProjectName:  id,
-      },
-    }
+		composeFile := p.Apps[id].Info.Path + "/docker-compose.yml"
+		c := ctx.Context{
+			Context: project.Context{
+				ComposeFiles: []string{composeFile},
+				ProjectName:  id,
+			},
+		}
 
-    var err error
-    var prj project.APIProject
-    if prj, err = docker.NewProject(&c, nil); err == nil {
-      p.Apps[id].Client = prj
+		var err error
+		var prj project.APIProject
+		if prj, err = docker.NewProject(&c, nil); err == nil {
+			p.Apps[id].Client = prj
 			if p.Apps[id].Active == true {
 				// Stop running docker containers for the app first
 				if err = p.Apps[id].Client.Down(context.Background(), options.Down{}); err != nil {
 					return err
 				}
 
-      	err = prj.Up(context.Background(), options.Up{})
-	      if err == nil {
-	        eventstream, _ := p.Apps[id].Client.Events(context.Background())
-	        p.Apps[id].Events = eventstream
-	      }
+				err = prj.Up(context.Background(), options.Up{})
+				if err == nil {
+					eventstream, _ := p.Apps[id].Client.Events(context.Background())
+					p.Apps[id].Events = eventstream
+				}
 			}
-    } else {
-      delete(p.Apps, id)
-      utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
-    }
-  }
+		} else {
+			delete(p.Apps, id)
+			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
+		}
+	}
 	NewListener(p)
-  return nil
+	return nil
 }
 
 // Deploy ...
@@ -211,8 +211,8 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 					*infile = path + "/" + f.Name()
 					err = LoadImage(infile)
 					if err != nil {
-					    os.RemoveAll(path)
-					    return nil, err
+						os.RemoveAll(path)
+						return nil, err
 					}
 				}
 			}
@@ -233,8 +233,8 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				isMonitor = true
 				p.IsHealthyMap[uuid] = make(map[string]bool)
 				app := prj.(*project.Project)
-				for name, _ := range app.ServiceConfigs.All() {
-					p.IsHealthyMap[uuid][name] = true;
+				for name := range app.ServiceConfigs.All() {
+					p.IsHealthyMap[uuid][name] = true
 				}
 			}
 			p.Apps[uuid] = &ComposeApp{
@@ -244,11 +244,11 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 					Version: metadata.Version,
 					Path:    path,
 					Monitor: metadata.Monitor,
-					Active:	 "no",
+					Active:  "no",
 				},
 				Client:  prj,
 				Monitor: isMonitor,
-				Active: false,
+				Active:  false,
 			}
 
 			err = prj.Up(context.Background(), options.Up{})
@@ -260,19 +260,17 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 				info := p.Apps[uuid].Info
 				return &info, nil
-			} else {
-				app, _ := p.Apps[uuid]
-				app.Client.Down(context.Background(), options.Down{})
-				app.Client.Delete(context.Background(), options.Delete{})
-				os.RemoveAll(app.Info.Path)
-				delete(p.Apps, app.Info.UUID)
-				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
-				return nil, err
 			}
-		} else {	
-			os.RemoveAll(path)
+			app, _ := p.Apps[uuid]
+			app.Client.Down(context.Background(), options.Down{})
+			app.Client.Delete(context.Background(), options.Delete{})
+			os.RemoveAll(app.Info.Path)
+			delete(p.Apps, app.Info.UUID)
+			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil, err
 		}
+		os.RemoveAll(path)
+		return nil, err
 	}
 
 	return nil, errors.New(types.InvalidID)
@@ -286,6 +284,25 @@ func (p *Docker) Undeploy(id string) error {
 	app, exists := p.Apps[id]
 	if exists {
 		app.Client.Down(context.Background(), options.Down{})
+		app.Client.Delete(context.Background(), options.Delete{})
+		os.RemoveAll(app.Info.Path)
+		delete(p.Apps, app.Info.UUID)
+		utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
+
+		return nil
+	}
+
+	return errors.New(types.InvalidID)
+}
+
+// Kill ...
+func (p *Docker) Kill(id string) error {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+
+	app, exists := p.Apps[id]
+	if exists {
+		app.Client.Kill(context.Background(), "SIGKILL")
 		app.Client.Delete(context.Background(), options.Delete{})
 		os.RemoveAll(app.Info.Path)
 		delete(p.Apps, app.Info.UUID)

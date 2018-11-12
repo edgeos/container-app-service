@@ -13,6 +13,7 @@ type Provider interface {
 
 	Deploy(metadata types.Metadata, file io.Reader) (*types.App, error)
 	Undeploy(id string) error
+	Kill(id string) error
 
 	Start(id string) error
 	Stop(id string) error
@@ -27,7 +28,6 @@ func NewProvider(c config.Config) Provider {
 	p := NewDocker(c)
 	if err := p.Init(); err != nil {
 		return nil
-	} else {
-		return p
 	}
+	return p
 }

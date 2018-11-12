@@ -1,4 +1,4 @@
-FROM registry.gear.ge.com/predix_edge/golang-amd64:1.8
+FROM golang:1.11.2-alpine3.8
 
 RUN set -ex \
 	&& mkdir -p /mnt/data \

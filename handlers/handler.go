@@ -111,7 +111,7 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file, artifacts[i].Filename); err == nil {
+					if app, err := h.provider.Deploy(metadata, file); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version
@@ -303,7 +303,7 @@ func Start(cfg config.Config) {
 			// Intentionally ignore error, socket might not exist
 			_ = os.Remove(cfg.ListenAddress)
 
-			cappsd_sock, err := net.Listen("unix", cfg.ListenAddress)
+			cappsdSock, err := net.Listen("unix", cfg.ListenAddress)
 
 			if err != nil {
 				log.Println("Error binding socket - ", err)
@@ -314,7 +314,7 @@ func Start(cfg config.Config) {
 				log.Println("Error setting socket permissions - ", err)
 				return err
 			}
-			err = server.Serve(cappsd_sock)
+			err = server.Serve(cappsdSock)
 
 			once.Do(func() {
 				log.Println("Error running http api - ", err)
