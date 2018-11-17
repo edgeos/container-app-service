@@ -59,6 +59,8 @@ PROXY_ARGS := $(shell if [ "$$http_proxy" != "" ]; then echo "-e http_proxy=$$ht
 PROXY_ARGS += $(shell if [ "$$https_proxy" != "" ]; then echo " -e https_proxy=$$https_proxy"; fi)
 PROXY_ARGS += $(shell if [ "$$no_proxy" != "" ]; then echo " -e no_proxy=$$no_proxy"; fi)
 
+INSTALL_DEPS = 1
+
 ALL_ARCH := amd64 arm arm64
 
 IMGARCH=$(ARCH)
@@ -132,7 +134,8 @@ fetch-deps: build-dirs .builder-$(ARCH)
 		-w /go/src/$(PKG)                                                  \
 		$(NAME)-$(ARCH):builder                                            \
 		/bin/sh -c "                                                       \
-			./scripts/fetch-deps.sh                                        \
+		        INSTALL_DEPS=$(INSTALL_DEPS)                               \
+			./scripts/fetch-deps.sh                                    \
 		"
 	@echo "fetch-deps: Build Success"
 
