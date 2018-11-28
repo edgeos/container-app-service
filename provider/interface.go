@@ -11,7 +11,7 @@ import (
 type Provider interface {
 	Init() error
 
-	Deploy(metadata types.Metadata, file io.Reader) (*types.App, error)
+	Deploy(metadata types.Metadata, file io.Reader, persitent bool, fakeRunning bool) (*types.App, error)
 	Undeploy(id string) error
 	Kill(id string) error
 

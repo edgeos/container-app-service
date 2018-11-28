@@ -101,7 +101,7 @@ func (h *Handler) getApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persistent bool, fakeRunning bool) {
 	response := DeployResponse{Status: Fail, Error: ""}
 	var metadata types.Metadata
 	if err := r.ParseMultipartForm(0); err == nil {
@@ -111,7 +111,7 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file); err == nil {
+					if app, err := h.provider.Deploy(metadata, file, persistent, fakeRunning); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version
@@ -136,6 +136,14 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
+	h.deployAppGeneric(w, r, false, false)
+}
+
+func (h *Handler) deployPersistentApplication(w http.ResponseWriter, r *http.Request) {
+	h.deployAppGeneric(w, r, true, false)
 }
 
 func (h *Handler) restartApplication(w http.ResponseWriter, r *http.Request) {
@@ -279,6 +287,7 @@ func setupServer(cfg config.Config) *http.Server {
 	router.HandleFunc("/applications", handler.listApplications).Methods("GET")
 	router.HandleFunc("/application/{id}", handler.getApplication).Methods("GET")
 	router.HandleFunc("/application/deploy", handler.deployApplication).Methods("POST")
+	router.HandleFunc("/application/deploy-persistent", handler.deployPersistentApplication).Methods("POST")
 	router.HandleFunc("/application/restart/{id}", handler.restartApplication).Methods("POST")
 	router.HandleFunc("/application/start/{id}", handler.startApplication).Methods("POST")
 	router.HandleFunc("/application/stop/{id}", handler.stopApplication).Methods("POST")

@@ -191,16 +191,37 @@ func (p *Docker) Init() error {
 }
 
 // Deploy ...
-func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, error) {
+func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool, fakeRunning bool) (*types.App, error) {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 
 	var err error
 	var uuid string
+	pimgs_path := p.Cfg.DataVolume + "/application_pimages" 
+
 	if uuid, err = utils.NewUUID(); err == nil {
+		//If image is expected to be persistent then make sure we back
+		//  it up so it is always available, need to do this now while
+		//  file context is still valid
+		if persistant {
+			err = utils.CreatePersistentBackup(file, metadata.Name + ".tar.gz", pimgs_path)
+			if err != nil {
+				os.Remove(pimgs_path + metadata.Name)
+				return nil, err
+			}
+			//Replenish file
+			file, err = os.Open(pimgs_path + "/" + metadata.Name + ".tar.gz")
+		}
 		path := p.Cfg.DataVolume + "/" + uuid
 		os.Mkdir(path, os.ModePerm)
-		utils.Unpack(file, path)
+		err = utils.Unpack(file, path)
+		if err != nil {
+			if persistant {
+				os.Remove(pimgs_path + metadata.Name)
+			}
+			os.RemoveAll(path)
+			return nil, err
+		}
 		composeFile := path + "/docker-compose.yml"
 
 		files, err := ioutil.ReadDir(path)
@@ -211,6 +232,9 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 					*infile = path + "/" + f.Name()
 					err = LoadImage(infile)
 					if err != nil {
+						if persistant {
+							os.Remove(pimgs_path + metadata.Name)
+						}
 						os.RemoveAll(path)
 						return nil, err
 					}
@@ -251,7 +275,12 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				Active:  false,
 			}
 
-			err = prj.Up(context.Background(), options.Up{})
+			//Assume we are faking out running (OS build time special option), else
+			// attempt to run app
+			err = nil
+			if !fakeRunning {
+				err = prj.Up(context.Background(), options.Up{})
+			}
 			if err == nil {
 				eventstream, _ := p.Apps[uuid].Client.Events(context.Background())
 				p.Apps[uuid].Events = eventstream
@@ -259,15 +288,23 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader) (*types.App, er
 				p.Apps[uuid].Info.Active = "yes"
 				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 				info := p.Apps[uuid].Info
+
+
 				return &info, nil
 			}
 			app, _ := p.Apps[uuid]
 			app.Client.Down(context.Background(), options.Down{})
 			app.Client.Delete(context.Background(), options.Delete{})
 			os.RemoveAll(app.Info.Path)
+			if persistant {
+				os.Remove(pimgs_path + metadata.Name)
+			}
 			delete(p.Apps, app.Info.UUID)
 			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil, err
+		}
+		if persistant {
+			os.Remove(pimgs_path + metadata.Name)
 		}
 		os.RemoveAll(path)
 		return nil, err
