@@ -217,7 +217,7 @@ func (p *Docker) Init() error {
 						if err != nil {
 							return err
 						}
-						p.Deploy(m, f, false, false)
+						p.Deploy(m, f, false)
 					}
 				} else {
 					err = errors.New("Persistent image "+pName+" is missing metadata json")
@@ -231,7 +231,7 @@ func (p *Docker) Init() error {
 }
 
 // Deploy ...
-func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool, fakeRunning bool) (*types.App, error) {
+func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool) (*types.App, error) {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 
@@ -322,7 +322,10 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 			//Assume we are faking out running (OS build time special option), else
 			// attempt to run app
 			err = nil
-			if !fakeRunning {
+			if strings.EqualFold(metadata.DelayStart, "yes") {
+				// Make sure we don't save off DelayStart in metadata since its a one time deal
+				metadata.DelayStart = "no"
+			} else {
 				err = prj.Up(context.Background(), options.Up{})
 			}
 			if err == nil {
@@ -332,7 +335,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 				p.Apps[uuid].Info.Active = "yes"
 				utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 				info := p.Apps[uuid].Info
-
+				p.PApps[metadata.Name] = &metadata
 
 				return &info, nil
 			}

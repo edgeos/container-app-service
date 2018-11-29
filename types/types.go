@@ -18,9 +18,10 @@ type PersistentApps struct {
 
 //Metadata ...
 type Metadata struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Monitor string `json:"monitor"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	Monitor    string `json:"monitor"`
+	DelayStart string `json:"delaystart"`
 }
 
 //Applications ...

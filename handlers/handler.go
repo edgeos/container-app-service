@@ -106,7 +106,7 @@ func (h *Handler) getApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persistent bool, fakeRunning bool) {
+func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persistent bool) {
 	response := DeployResponse{Status: Fail, Error: ""}
 	var metadata types.Metadata
 	if err := r.ParseMultipartForm(0); err == nil {
@@ -116,7 +116,7 @@ func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persi
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file, persistent, fakeRunning); err == nil {
+					if app, err := h.provider.Deploy(metadata, file, persistent); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version
@@ -144,11 +144,11 @@ func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persi
 }
 
 func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
-	h.deployAppGeneric(w, r, false, false)
+	h.deployAppGeneric(w, r, false)
 }
 
 func (h *Handler) deployPersistentApplication(w http.ResponseWriter, r *http.Request) {
-	h.deployAppGeneric(w, r, true, false)
+	h.deployAppGeneric(w, r, true)
 }
 
 func (h *Handler) restartApplication(w http.ResponseWriter, r *http.Request) {
