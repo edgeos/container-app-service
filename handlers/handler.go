@@ -76,6 +76,11 @@ func (h *Handler) listApplications(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) listPersistentApplications(w http.ResponseWriter, r *http.Request) {
+        response := h.provider.ListPersistentApplications()
+        json.NewEncoder(w).Encode(response)
+}
+
 func (h *Handler) getApplication(w http.ResponseWriter, r *http.Request) {
 	response := AppDetailsResponse{Status: Fail, Error: ""}
 	vars := mux.Vars(r)
@@ -260,6 +265,26 @@ func (h *Handler) purgeApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) purgePersistentApplication(w http.ResponseWriter, r *http.Request) {
+	response := BasicResponse{Status: Ok, Error: ""}
+
+	vars := mux.Vars(r)
+	name, exists := vars["name"]
+	if exists {
+		if err := h.provider.PurgePersistent(name); err != nil {
+			response.Status = Fail
+			response.Error = err.Error()
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	} else {
+		response.Status = Fail
+		response.Error = NoID
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func (h *Handler) killApplication(w http.ResponseWriter, r *http.Request) {
 	response := BasicResponse{Status: Ok, Error: ""}
 
@@ -285,6 +310,7 @@ func setupServer(cfg config.Config) *http.Server {
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handler.ping).Methods("GET")
 	router.HandleFunc("/applications", handler.listApplications).Methods("GET")
+	router.HandleFunc("/persistent-applications", handler.listPersistentApplications).Methods("GET")
 	router.HandleFunc("/application/{id}", handler.getApplication).Methods("GET")
 	router.HandleFunc("/application/deploy", handler.deployApplication).Methods("POST")
 	router.HandleFunc("/application/deploy-persistent", handler.deployPersistentApplication).Methods("POST")
@@ -293,6 +319,7 @@ func setupServer(cfg config.Config) *http.Server {
 	router.HandleFunc("/application/stop/{id}", handler.stopApplication).Methods("POST")
 	router.HandleFunc("/application/status/{id}", handler.statusApplication).Methods("GET")
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
+	router.HandleFunc("/application/purge-persistent/{name}", handler.purgePersistentApplication).Methods("POST")
 	router.HandleFunc("/application/kill/{id}", handler.killApplication).Methods("POST")
 
 	server := &http.Server{

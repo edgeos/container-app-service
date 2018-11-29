@@ -38,6 +38,7 @@ type ComposeApp struct {
 type Docker struct {
 	Cfg          config.Config
 	Apps         map[string]*ComposeApp
+	PApps        map[string]*types.Metadata
 	Lock         sync.RWMutex
 	IsHealthyMap map[string](map[string]bool)
 }
@@ -133,6 +134,7 @@ func (l *EventListener) start() {
 func NewDocker(c config.Config) *Docker {
 	provider := new(Docker)
 	provider.Apps = make(map[string]*ComposeApp)
+	provider.PApps = make(map[string]*types.Metadata)
 	provider.IsHealthyMap = make(map[string](map[string]bool))
 	provider.Cfg = c
 	return provider
@@ -143,6 +145,7 @@ func (p *Docker) Init() error {
 	var data map[string]ComposeApp
 	utils.Load(p.Cfg.DataVolume+"/application.json", &data)
 	p.Apps = make(map[string]*ComposeApp)
+	p.PApps = make(map[string]*types.Metadata)
 	for id := range data {
 		p.Apps[id] = &ComposeApp{
 			Info: types.App{
@@ -186,6 +189,43 @@ func (p *Docker) Init() error {
 			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 		}
 	}
+
+	// Start all persistent apps if not already running
+	if _, err := os.Stat(p.Cfg.DataVolume+"/application_pimages"); !os.IsNotExist(err) {
+		pfiles, _ := ioutil.ReadDir(p.Cfg.DataVolume+"/application_pimages")
+		for _, pfile := range pfiles {
+			// For each item in directory make sure we have a NAME.tar.gz and NAME.json pair to process
+			if !pfile.IsDir() && strings.HasSuffix(pfile.Name(), ".tar.gz") {
+				pName := strings.TrimSuffix(pfile.Name(), ".tar.gz")
+				if _, err := os.Stat(p.Cfg.DataVolume+"/application_pimages/"+pName+".json"); !os.IsNotExist(err) {
+					// Record the persistent app for future reference
+					var m types.Metadata; utils.Load(p.Cfg.DataVolume+"/application_pimages/"+pName+".json", &m)
+					p.PApps[pName] = &m
+
+					// See if persistent app name is already available in running apps
+					deployPersisApp := true
+					for id := range p.Apps {
+						if p.Apps[id].Info.Name == pName {
+							deployPersisApp = false
+							break
+						}
+					}
+
+					// If app is not already running then start it.
+					if deployPersisApp {
+						f, err := os.Open(p.Cfg.DataVolume+"/application_pimages/"+pfile.Name())
+						if err != nil {
+							return err
+						}
+						p.Deploy(m, f, false, false)
+					}
+				} else {
+					err = errors.New("Persistent image "+pName+" is missing metadata json")
+				}
+			}
+		}
+	}
+
 	NewListener(p)
 	return nil
 }
@@ -197,7 +237,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 
 	var err error
 	var uuid string
-	pimgs_path := p.Cfg.DataVolume + "/application_pimages" 
+	pimgs_path := p.Cfg.DataVolume + "/application_pimages/" 
 
 	if uuid, err = utils.NewUUID(); err == nil {
 		//If image is expected to be persistent then make sure we back
@@ -209,8 +249,10 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 				os.Remove(pimgs_path + metadata.Name)
 				return nil, err
 			}
-			//Replenish file
-			file, err = os.Open(pimgs_path + "/" + metadata.Name + ".tar.gz")
+			//Save off metadata used with persistent image
+			utils.Save(pimgs_path + metadata.Name+".json", metadata)
+			//Replenish file for rest of processing
+			file, err = os.Open(pimgs_path + metadata.Name + ".tar.gz")
 		}
 		path := p.Cfg.DataVolume + "/" + uuid
 		os.Mkdir(path, os.ModePerm)
@@ -218,6 +260,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 		if err != nil {
 			if persistant {
 				os.Remove(pimgs_path + metadata.Name)
+                                os.Remove(pimgs_path + metadata.Name+".json")
 			}
 			os.RemoveAll(path)
 			return nil, err
@@ -234,6 +277,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 					if err != nil {
 						if persistant {
 							os.Remove(pimgs_path + metadata.Name)
+							os.Remove(pimgs_path + metadata.Name+".json")
 						}
 						os.RemoveAll(path)
 						return nil, err
@@ -298,6 +342,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 			os.RemoveAll(app.Info.Path)
 			if persistant {
 				os.Remove(pimgs_path + metadata.Name)
+				os.Remove(pimgs_path + metadata.Name+".json")
 			}
 			delete(p.Apps, app.Info.UUID)
 			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
@@ -305,6 +350,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 		}
 		if persistant {
 			os.Remove(pimgs_path + metadata.Name)
+			os.Remove(pimgs_path + metadata.Name+".json")
 		}
 		os.RemoveAll(path)
 		return nil, err
@@ -330,6 +376,22 @@ func (p *Docker) Undeploy(id string) error {
 	}
 
 	return errors.New(types.InvalidID)
+}
+
+// PurgePersistent ...
+func (p *Docker) PurgePersistent(name string) error {
+	p.Lock.Lock()
+	defer p.Lock.Unlock()
+
+	_, exists := p.PApps[name]
+	if exists {
+		os.Remove(p.Cfg.DataVolume+"/application_pimages/"+name+".tar.gz")
+		os.Remove(p.Cfg.DataVolume+"/application_pimages/"+name+".json")
+		delete(p.PApps, name)
+		return nil
+	}
+
+	return errors.New(types.InvalidName)
 }
 
 // Kill ...
@@ -452,6 +514,19 @@ func (p *Docker) ListApplications() types.Applications {
 	var response types.Applications
 	for k := range p.Apps {
 		response.Apps = append(response.Apps, p.Apps[k].Info)
+	}
+
+	return response
+}
+
+// ListPersistentApplications ...
+func (p *Docker) ListPersistentApplications() types.PersistentApps {
+	p.Lock.RLock()
+	defer p.Lock.RUnlock()
+
+	var response types.PersistentApps
+	for k := range p.PApps {
+		response.PApps = append(response.PApps, *p.PApps[k])
 	}
 
 	return response
