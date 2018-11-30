@@ -104,3 +104,19 @@ func RetryNWithBackoff(backoff Backoff, n int, fn func() error) error {
 	})
 	return err
 }
+
+// Make a persistent backup of source
+func CreatePersistentBackup(source io.Reader, target_name string, target_dir string) error {
+	tgt_pathname := filepath.Join(target_dir, target_name)
+	os.Mkdir(target_dir, os.FileMode(0755))
+	file, err := os.OpenFile(tgt_pathname, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(0644))
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = io.Copy(file, source)
+	if err != nil {
+		return err
+	}
+	return nil
+}

@@ -11,8 +11,9 @@ import (
 type Provider interface {
 	Init() error
 
-	Deploy(metadata types.Metadata, file io.Reader) (*types.App, error)
+	Deploy(metadata types.Metadata, file io.Reader, persistent bool) (*types.App, error)
 	Undeploy(id string) error
+	PurgePersistent(name string) error
 	Kill(id string) error
 
 	Start(id string) error
@@ -21,6 +22,7 @@ type Provider interface {
 
 	GetApplication(id string) (*types.AppDetails, error)
 	ListApplications() types.Applications
+	ListPersistentApplications() types.PersistentApps
 }
 
 // NewProvider ...

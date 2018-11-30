@@ -2,19 +2,26 @@ package types
 
 //Constants ...
 const (
-	Ok        = "Ok"
-	Fail      = "Fail"
-	Deployed  = "Deployed"
-	Running   = "Running"
-	Stopped   = "Stopped"
-	InvalidID = "Application ID not found"
+	Ok          = "Ok"
+	Fail        = "Fail"
+	Deployed    = "Deployed"
+	Running     = "Running"
+	Stopped     = "Stopped"
+	InvalidID   = "Application ID not found"
+	InvalidName = "Application Name not found"
 )
+
+//PersistentApps ...
+type PersistentApps struct {
+	PApps []Metadata `json:"persistent-applications"`
+}
 
 //Metadata ...
 type Metadata struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	Monitor string `json:"monitor"`
+	Name       string `json:"name"`
+	Version    string `json:"version"`
+	Monitor    string `json:"monitor"`
+	DelayStart string `json:"delaystart"`
 }
 
 //Applications ...

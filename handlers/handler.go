@@ -76,6 +76,11 @@ func (h *Handler) listApplications(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) listPersistentApplications(w http.ResponseWriter, r *http.Request) {
+        response := h.provider.ListPersistentApplications()
+        json.NewEncoder(w).Encode(response)
+}
+
 func (h *Handler) getApplication(w http.ResponseWriter, r *http.Request) {
 	response := AppDetailsResponse{Status: Fail, Error: ""}
 	vars := mux.Vars(r)
@@ -101,7 +106,7 @@ func (h *Handler) getApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persistent bool) {
 	response := DeployResponse{Status: Fail, Error: ""}
 	var metadata types.Metadata
 	if err := r.ParseMultipartForm(0); err == nil {
@@ -111,7 +116,7 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file); err == nil {
+					if app, err := h.provider.Deploy(metadata, file, persistent); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version
@@ -136,6 +141,14 @@ func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) deployApplication(w http.ResponseWriter, r *http.Request) {
+	h.deployAppGeneric(w, r, false)
+}
+
+func (h *Handler) deployPersistentApplication(w http.ResponseWriter, r *http.Request) {
+	h.deployAppGeneric(w, r, true)
 }
 
 func (h *Handler) restartApplication(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +265,26 @@ func (h *Handler) purgeApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) purgePersistentApplication(w http.ResponseWriter, r *http.Request) {
+	response := BasicResponse{Status: Ok, Error: ""}
+
+	vars := mux.Vars(r)
+	name, exists := vars["name"]
+	if exists {
+		if err := h.provider.PurgePersistent(name); err != nil {
+			response.Status = Fail
+			response.Error = err.Error()
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	} else {
+		response.Status = Fail
+		response.Error = NoID
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
 func (h *Handler) killApplication(w http.ResponseWriter, r *http.Request) {
 	response := BasicResponse{Status: Ok, Error: ""}
 
@@ -277,13 +310,16 @@ func setupServer(cfg config.Config) *http.Server {
 	router := mux.NewRouter()
 	router.HandleFunc("/ping", handler.ping).Methods("GET")
 	router.HandleFunc("/applications", handler.listApplications).Methods("GET")
+	router.HandleFunc("/persistent-applications", handler.listPersistentApplications).Methods("GET")
 	router.HandleFunc("/application/{id}", handler.getApplication).Methods("GET")
 	router.HandleFunc("/application/deploy", handler.deployApplication).Methods("POST")
+	router.HandleFunc("/application/deploy-persistent", handler.deployPersistentApplication).Methods("POST")
 	router.HandleFunc("/application/restart/{id}", handler.restartApplication).Methods("POST")
 	router.HandleFunc("/application/start/{id}", handler.startApplication).Methods("POST")
 	router.HandleFunc("/application/stop/{id}", handler.stopApplication).Methods("POST")
 	router.HandleFunc("/application/status/{id}", handler.statusApplication).Methods("GET")
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
+	router.HandleFunc("/application/purge-persistent/{name}", handler.purgePersistentApplication).Methods("POST")
 	router.HandleFunc("/application/kill/{id}", handler.killApplication).Methods("POST")
 
 	server := &http.Server{
