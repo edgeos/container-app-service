@@ -231,7 +231,7 @@ func (p *Docker) Init() error {
 }
 
 // Deploy ...
-func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool) (*types.App, error) {
+func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool) (*types.App, error) {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 
@@ -243,7 +243,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 		//If image is expected to be persistent then make sure we back
 		//  it up so it is always available, need to do this now while
 		//  file context is still valid
-		if persistant {
+		if persistent {
 			err = utils.CreatePersistentBackup(file, metadata.Name + ".tar.gz", pimgs_path)
 			if err != nil {
 				os.Remove(pimgs_path + metadata.Name)
@@ -258,7 +258,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 		os.Mkdir(path, os.ModePerm)
 		err = utils.Unpack(file, path)
 		if err != nil {
-			if persistant {
+			if persistent {
 				os.Remove(pimgs_path + metadata.Name)
                                 os.Remove(pimgs_path + metadata.Name+".json")
 			}
@@ -275,7 +275,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 					*infile = path + "/" + f.Name()
 					err = LoadImage(infile)
 					if err != nil {
-						if persistant {
+						if persistent {
 							os.Remove(pimgs_path + metadata.Name)
 							os.Remove(pimgs_path + metadata.Name+".json")
 						}
@@ -343,7 +343,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 			app.Client.Down(context.Background(), options.Down{})
 			app.Client.Delete(context.Background(), options.Delete{})
 			os.RemoveAll(app.Info.Path)
-			if persistant {
+			if persistent {
 				os.Remove(pimgs_path + metadata.Name)
 				os.Remove(pimgs_path + metadata.Name+".json")
 			}
@@ -351,7 +351,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistant bool
 			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil, err
 		}
-		if persistant {
+		if persistent {
 			os.Remove(pimgs_path + metadata.Name)
 			os.Remove(pimgs_path + metadata.Name+".json")
 		}
