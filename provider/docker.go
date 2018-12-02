@@ -243,12 +243,16 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 		//If image is expected to be persistent then make sure we back
 		//  it up so it is always available, need to do this now while
 		//  file context is still valid
+		DelayStart := strings.EqualFold(metadata.DelayStart, "yes")
 		if persistent {
 			err = utils.CreatePersistentBackup(file, metadata.Name + ".tar.gz", pimgs_path)
 			if err != nil {
 				os.Remove(pimgs_path + metadata.Name)
 				return nil, err
 			}
+			
+			//Make sure we don't save off DelayStart in metadata since its a one time deal
+			metadata.DelayStart = "no"
 			//Save off metadata used with persistent image
 			utils.Save(pimgs_path + metadata.Name+".json", metadata)
 			//Replenish file for rest of processing
@@ -322,10 +326,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 			//Assume we are faking out running (OS build time special option), else
 			// attempt to run app
 			err = nil
-			if strings.EqualFold(metadata.DelayStart, "yes") {
-				// Make sure we don't save off DelayStart in metadata since its a one time deal
-				metadata.DelayStart = "no"
-			} else {
+			if !DelayStart {
 				err = prj.Up(context.Background(), options.Up{})
 			}
 			if err == nil {
