@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"log"
 
 	"encoding/json"
 	"io/ioutil"
@@ -179,10 +180,35 @@ func (p *Docker) Init() error {
 				}
 
 				err = prj.Up(context.Background(), options.Up{})
+
+				// If we failed to start the container lets attempt to reload the image if its available
+				// since the user may have inadvertently deleted it.
+				if err != nil {
+					log.Println(err, " - Will now attempt to load image from disk instead")
+					files, err := ioutil.ReadDir(p.Apps[id].Info.Path)
+			                if err == nil {
+						for _, f := range files {
+							if strings.Contains(f.Name(), ".tar") {
+								var infile = new(string)
+								*infile = p.Apps[id].Info.Path + "/" + f.Name()
+								err = LoadImage(infile)
+								if err != nil {
+									log.Println("Failed to load: ", *infile)
+								}
+							}
+						}
+						// Attempt to start app again regardless if loading occurred (maybe we will get lucky)
+						err = prj.Up(context.Background(), options.Up{})
+					}
+				}
+
 				if err == nil {
 					eventstream, _ := p.Apps[id].Client.Events(context.Background())
 					p.Apps[id].Events = eventstream
+				} else {
+					log.Println("Failed to start: ", p.Apps[id].Info.Name)
 				}
+
 			}
 		} else {
 			delete(p.Apps, id)
@@ -250,7 +276,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 				os.Remove(pimgs_path + metadata.Name)
 				return nil, err
 			}
-			
+
 			//Make sure we don't save off DelayStart in metadata since its a one time deal
 			metadata.DelayStart = "no"
 			//Save off metadata used with persistent image
@@ -264,7 +290,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 		if err != nil {
 			if persistent {
 				os.Remove(pimgs_path + metadata.Name)
-                                os.Remove(pimgs_path + metadata.Name+".json")
+	                        os.Remove(pimgs_path + metadata.Name+".json")
 			}
 			os.RemoveAll(path)
 			return nil, err
