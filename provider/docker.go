@@ -273,7 +273,7 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 		if persistent {
 			err = utils.CreatePersistentBackup(file, metadata.Name + ".tar.gz", pimgs_path)
 			if err != nil {
-				os.Remove(pimgs_path + metadata.Name)
+				os.Remove(pimgs_path + metadata.Name + ".tar.gz")
 				return nil, err
 			}
 
@@ -289,8 +289,8 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 		err = utils.Unpack(file, path)
 		if err != nil {
 			if persistent {
-				os.Remove(pimgs_path + metadata.Name)
-	                        os.Remove(pimgs_path + metadata.Name+".json")
+				os.Remove(pimgs_path + metadata.Name + ".tar.gz")
+	                        os.Remove(pimgs_path + metadata.Name + ".json")
 			}
 			os.RemoveAll(path)
 			return nil, err
@@ -306,8 +306,8 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 					err = LoadImage(infile)
 					if err != nil {
 						if persistent {
-							os.Remove(pimgs_path + metadata.Name)
-							os.Remove(pimgs_path + metadata.Name+".json")
+							os.Remove(pimgs_path + metadata.Name + ".tar.gz")
+							os.Remove(pimgs_path + metadata.Name + ".json")
 						}
 						os.RemoveAll(path)
 						return nil, err
@@ -371,16 +371,16 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 			app.Client.Delete(context.Background(), options.Delete{})
 			os.RemoveAll(app.Info.Path)
 			if persistent {
-				os.Remove(pimgs_path + metadata.Name)
-				os.Remove(pimgs_path + metadata.Name+".json")
+				os.Remove(pimgs_path + metadata.Name + ".tar.gz")
+				os.Remove(pimgs_path + metadata.Name + ".json")
 			}
 			delete(p.Apps, app.Info.UUID)
 			utils.Save(p.Cfg.DataVolume+"/application.json", p.Apps)
 			return nil, err
 		}
 		if persistent {
-			os.Remove(pimgs_path + metadata.Name)
-			os.Remove(pimgs_path + metadata.Name+".json")
+			os.Remove(pimgs_path + metadata.Name + ".tar.gz")
+			os.Remove(pimgs_path + metadata.Name + ".json")
 		}
 		os.RemoveAll(path)
 		return nil, err
