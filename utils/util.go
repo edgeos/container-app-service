@@ -4,13 +4,30 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/rand"
-	"errors"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/pem"
+	"bytes"
+	"io/ioutil""errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/edgeos/container-app-service/config"
+)
+
+// Constants
+var(
+	// extension for encrypted files
+	EncryptedExtension = ".enc"
+	GzipExtension = ".gz"
+	LockKeyExtension = ".lockkey"
+	DecryptedLockKeyLength = 65
 )
 
 // NewUUID generates a random UUID according to RFC 4122
@@ -28,15 +45,166 @@ func NewUUID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
-//Unpack ...
-func Unpack(source io.Reader, target string) error {
+// return decryption key if available
+func GetDecryptionKey(cfg config.Config) (*rsa.PrivateKey, string, error) {
+	//TODO: Don't get the key this way, this is for proof of concept
+	if len(cfg.KeyLocation) == 0 {
+		return nil, "", errors.New("Cannot get decryption key, no key configured")
+	}
+	keyInfo, err := ioutil.ReadFile(cfg.KeyLocation)
+	// unpack key, binary format: [machine's lockkey name][null terminator][rsa key]
+	if err != nil {
+		return nil, "", err
+	}
+	nameLen := -1
+	for i := 0; i < len(keyInfo); i ++ {
+		//find null terminator for string
+		if keyInfo[i] == 0 {
+			nameLen = i
+			break
+		}
+	}
+	//separate lockkey name (expected RSA encrypted symmetric key info for this machine)
+	lockKeyName := keyInfo[0 : nameLen]
+	//separate RSA private key info for this machine and parse it
+	pemString := keyInfo[nameLen + 1 : len(keyInfo)]
+	block, _ := pem.Decode([]byte(pemString))
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, "", err
+	}
+	return key, string(lockKeyName), nil
+}
+
+func isEncryptedPackage(archive *gzip.Reader) (bool, error) {
+	hasEncrypted := false
+	hasUnencrypted := false
+	tarReader := tar.NewReader(archive)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return false, err
+		}
+		info := header.FileInfo()
+		if !info.IsDir() {
+			if filepath.Ext(header.Name) == EncryptedExtension {
+				hasEncrypted = true
+			} else if filepath.Ext(header.Name) == GzipExtension {
+				hasUnencrypted = true
+			}
+		}
+	}
+	if hasEncrypted && hasUnencrypted {
+		return false, errors.New("Package contains both encrypted and unencrypted payloads")
+	} else if !hasEncrypted && !hasUnencrypted {
+		return false, errors.New("Package contains neither encrypted nor unencrypted payloads")
+	}
+	return hasEncrypted, nil
+}
+
+//Unpack package tarball
+// Expected Manifest:
+// <application_name>.tar.gz            (top level tarball)
+ //   - MANIFEST.JSON                    (LTC parsable package info)
+//   - <lockfile_name 0..n>.lockfile    (RSA encrypted symmetric key files, there are many... 1 per machine)
+//   - <application_name>.tar.gz<.enc>  (application payload - .enc indicates encrypted by symmetric key in .lockfile)
+func Unpack(source io.Reader, target string, filename string, cfg config.Config) error {
+	var unencryptedReader io.Reader
+	var lockkeyData, encryptedData []byte
+	//open top level of tarball
+	topArchive, err := gzip.NewReader(source)
+	if err != nil {
+		return err
+	}
+	defer topArchive.Close()
+	tarReader := tar.NewReader(topArchive)
+	key, lockKeyName, getKeyErr := GetDecryptionKey(cfg)
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+		info := header.FileInfo()
+		if !info.IsDir() {
+			if filepath.Ext(header.Name) == EncryptedExtension {
+				if encryptedData != nil {
+					return errors.New("Application package malformed: multiple encrypted payloads")
+				}
+				encryptedData, err = ioutil.ReadAll(tarReader)
+				if err != nil {
+					return err
+				}
+			} else if filepath.Ext(header.Name) == GzipExtension {
+				if unencryptedReader != nil {
+					return errors.New("Application package malformed: multiple unencrypted payloads.  This may be a deprecated package format.")
+				}
+				data, err := ioutil.ReadAll(tarReader)
+				if err != nil {
+					return err
+				}
+				unencryptedReader = bytes.NewReader(data)
+			} else if lockKeyName != "" && header.Name == lockKeyName {
+				if lockkeyData != nil {
+					return errors.New("Application package malformed: multiple machine lockkeys")
+				}
+				lockkeyData, err = ioutil.ReadAll(tarReader)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	
+	if encryptedData == nil && unencryptedReader == nil {
+		return errors.New("Application package malformed: no package payload found")
+	} else if encryptedData != nil && unencryptedReader != nil {
+		return errors.New("Application package malformed: contains encrypted and clear payloads")
+	} else if encryptedData != nil && getKeyErr != nil {
+		return getKeyErr //TODO: maybe wrap this err message to provide more context
+	} else if encryptedData != nil && lockkeyData == nil {
+		return errors.New("Application package malformed: encrypted package, but no lockkey for this machine")
+	} else if encryptedData != nil && lockkeyData != nil {
+		//decrypt lockkey & parse padding, key, and iv
+		aesPadKeyIv, err := rsa.DecryptPKCS1v15(nil, key, lockkeyData)
+		if err != nil {
+			return err
+		}
+		if len(aesPadKeyIv) != DecryptedLockKeyLength {
+			errString := fmt.Sprintf("Error, decrypted padding, key, and iv length (%d) are not correct (expected %d)",
+				len(aesPadKeyIv), DecryptedLockKeyLength)
+			return errors.New(errString)
+		}
+		padding := aesPadKeyIv[16]
+		aesKeyBytes := aesPadKeyIv[17:49]
+		iv := aesPadKeyIv[49:65]
+		aesKey, err := aes.NewCipher(aesKeyBytes)
+		if err != nil {
+			return err
+		}
+		//decrypt payload
+		if len(encryptedData)%aes.BlockSize != 0 {
+			return errors.New("Encrypted payload is not a multiple of the block size")
+		}
+		decrypter := cipher.NewCBCDecrypter(aesKey, iv)
+		clearFilePadded := make([]byte, len(encryptedData))
+		unpaddedLen := len(encryptedData) - int(padding)
+		decrypter.CryptBlocks(clearFilePadded, encryptedData)
+		clearFile := clearFilePadded[0:unpaddedLen]
+		unencryptedReader = bytes.NewReader(clearFile)
+	}	
+
+	//handle decrypted (or unencrypted) payload
 	archive, err := gzip.NewReader(source)
 	if err != nil {
 		return err
 	}
 	defer archive.Close()
 
-	tarReader := tar.NewReader(archive)
+	tarReader = tar.NewReader(archive)
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {

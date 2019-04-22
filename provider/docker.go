@@ -257,7 +257,7 @@ func (p *Docker) Init() error {
 }
 
 // Deploy ...
-func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool) (*types.App, error) {
+func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, filename string, persistent bool) (*types.App, error) {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
 
@@ -314,6 +314,8 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool
 					}
 				}
 			}
+		} else {
+		       return err, nil
 		}
 
 		c := ctx.Context{

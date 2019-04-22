@@ -12,6 +12,7 @@ type Config struct {
 	DataVolume    string `json:"data_volume"`
 	ReadTimeout   int    `json:"read_timeout"`
 	WriteTimeout  int    `json:"write_timeout"`
+	KeyLocation   string `json:"key_location,omitempty"`
 }
 
 type dockerConfig struct {

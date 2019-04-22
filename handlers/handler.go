@@ -116,7 +116,7 @@ func (h *Handler) deployAppGeneric(w http.ResponseWriter, r *http.Request, persi
 			for i := range artifacts {
 				if file, err := artifacts[i].Open(); err == nil {
 					defer file.Close()
-					if app, err := h.provider.Deploy(metadata, file, persistent); err == nil {
+					if app, err := h.provider.Deploy(metadata, file, artifacts[i].Filename, persistent); err == nil {
 						response.UUID = app.UUID
 						response.Name = app.Name
 						response.Version = app.Version

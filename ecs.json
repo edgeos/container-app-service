@@ -3,7 +3,8 @@
     "data_volume": "/mnt/data",
     "read_timeout": 30,
     "write_timeout:": 30,
-
+    "key_location": "/key/decrypt.keyinfo",
+    
     "Docker":
     {
         "endpoint": "unix://var/run/docker.sock",
