@@ -10,7 +10,8 @@ import (
 	"crypto/cipher"
 	"encoding/pem"
 	"bytes"
-	"io/ioutil""errors"
+	"io/ioutil"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/edgeos/container-app-service/config"
+	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
 )
 
 // Constants
@@ -65,7 +66,7 @@ func GetDecryptionKey(cfg config.Config) (*rsa.PrivateKey, string, error) {
 		}
 	}
 	//separate lockkey name (expected RSA encrypted symmetric key info for this machine)
-	lockKeyName := keyInfo[0 : nameLen]
+	lockKeyName := string(keyInfo[0 : nameLen]) + LockKeyExtension
 	//separate RSA private key info for this machine and parse it
 	pemString := keyInfo[nameLen + 1 : len(keyInfo)]
 	block, _ := pem.Decode([]byte(pemString))
@@ -73,7 +74,7 @@ func GetDecryptionKey(cfg config.Config) (*rsa.PrivateKey, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	return key, string(lockKeyName), nil
+	return key, lockKeyName, nil
 }
 
 func isEncryptedPackage(archive *gzip.Reader) (bool, error) {
@@ -110,10 +111,11 @@ func isEncryptedPackage(archive *gzip.Reader) (bool, error) {
  //   - MANIFEST.JSON                    (LTC parsable package info)
 //   - <lockfile_name 0..n>.lockfile    (RSA encrypted symmetric key files, there are many... 1 per machine)
 //   - <application_name>.tar.gz<.enc>  (application payload - .enc indicates encrypted by symmetric key in .lockfile)
-func Unpack(source io.Reader, target string, filename string, cfg config.Config) error {
+func Unpack(source io.Reader, target string, cfg config.Config) error {
 	var unencryptedReader io.Reader
 	var lockkeyData, encryptedData []byte
 	//open top level of tarball
+	fmt.Println("Unpacking application pacakge...")
 	topArchive, err := gzip.NewReader(source)
 	if err != nil {
 		return err
@@ -121,6 +123,8 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 	defer topArchive.Close()
 	tarReader := tar.NewReader(topArchive)
 	key, lockKeyName, getKeyErr := GetDecryptionKey(cfg)
+	fmt.Println("  Found decryption key")
+	fmt.Println("  Package contents:")
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -129,6 +133,7 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 			return err
 		}
 		info := header.FileInfo()
+		fmt.Printf("    %s\n", header.Name)
 		if !info.IsDir() {
 			if filepath.Ext(header.Name) == EncryptedExtension {
 				if encryptedData != nil {
@@ -147,7 +152,7 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 					return err
 				}
 				unencryptedReader = bytes.NewReader(data)
-			} else if lockKeyName != "" && header.Name == lockKeyName {
+			} else if lockKeyName != "" && filepath.Base(header.Name) == lockKeyName {
 				if lockkeyData != nil {
 					return errors.New("Application package malformed: multiple machine lockkeys")
 				}
@@ -166,9 +171,12 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 	} else if encryptedData != nil && getKeyErr != nil {
 		return getKeyErr //TODO: maybe wrap this err message to provide more context
 	} else if encryptedData != nil && lockkeyData == nil {
-		return errors.New("Application package malformed: encrypted package, but no lockkey for this machine")
+			errString := fmt.Sprintf("Application package malformed: encrypted package, but no lockkey for this machine (looking for %s)",
+				lockKeyName)
+		return errors.New(errString)
 	} else if encryptedData != nil && lockkeyData != nil {
-		//decrypt lockkey & parse padding, key, and iv
+		fmt.Println("  This is an encrypted package, decrypting...")
+		// lockkey & parse padding, key, and iv
 		aesPadKeyIv, err := rsa.DecryptPKCS1v15(nil, key, lockkeyData)
 		if err != nil {
 			return err
@@ -195,15 +203,15 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 		decrypter.CryptBlocks(clearFilePadded, encryptedData)
 		clearFile := clearFilePadded[0:unpaddedLen]
 		unencryptedReader = bytes.NewReader(clearFile)
+		fmt.Println("  Decryption complete.")
 	}	
-
 	//handle decrypted (or unencrypted) payload
-	archive, err := gzip.NewReader(source)
+	archive, err := gzip.NewReader(unencryptedReader)
 	if err != nil {
 		return err
 	}
 	defer archive.Close()
-
+	fmt.Println("  Unpacking data payload...")
 	tarReader = tar.NewReader(archive)
 	for {
 		header, err := tarReader.Next()
@@ -212,6 +220,7 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 		} else if err != nil {
 			return err
 		}
+		fmt.Printf("    Examining %s\n", header.Name)
 		path := filepath.Join(target, header.Name)
 		info := header.FileInfo()
 		invalid, _ := regexp.MatchString(`^.*\.\.\/.*$`, path)
@@ -233,9 +242,10 @@ func Unpack(source io.Reader, target string, filename string, cfg config.Config)
 				return err
 			}
 		} else {
-			return errors.New("Invalid tarball")
+			return errors.New("Invalid data payload tarball")
 		}
 	}
+	fmt.Println("  Data payload unpacking complete.")
 	return nil
 }
 

@@ -8,6 +8,8 @@ import (
 	"time"
 	"log"
 
+	"fmt"
+
 	"encoding/json"
 	"io/ioutil"
 	"strings"
@@ -257,10 +259,10 @@ func (p *Docker) Init() error {
 }
 
 // Deploy ...
-func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, filename string, persistent bool) (*types.App, error) {
+func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, persistent bool) (*types.App, error) {
 	p.Lock.Lock()
 	defer p.Lock.Unlock()
-
+	fmt.Println("Deploying Application")
 	var err error
 	var uuid string
 	pimgs_path := p.Cfg.DataVolume + "/application_pimages/" 
@@ -286,8 +288,9 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, filename string
 		}
 		path := p.Cfg.DataVolume + "/" + uuid
 		os.Mkdir(path, os.ModePerm)
-		err = utils.Unpack(file, path)
+		err = utils.Unpack(file, path, p.Cfg)
 		if err != nil {
+			fmt.Println(err)
 			if persistent {
 				os.Remove(pimgs_path + metadata.Name + ".tar.gz")
 	                        os.Remove(pimgs_path + metadata.Name + ".json")
@@ -295,14 +298,16 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, filename string
 			os.RemoveAll(path)
 			return nil, err
 		}
+		fmt.Println("Application package unpacked.")
 		composeFile := path + "/docker-compose.yml"
-
+		fmt.Println("Loading images...")
 		files, err := ioutil.ReadDir(path)
 		if err == nil {
 			for _, f := range files {
 				if strings.Contains(f.Name(), ".tar") {
 					var infile = new(string)
 					*infile = path + "/" + f.Name()
+					fmt.Printf("  Loading image %s\n", f.Name())
 					err = LoadImage(infile)
 					if err != nil {
 						if persistent {
@@ -315,9 +320,10 @@ func (p *Docker) Deploy(metadata types.Metadata, file io.Reader, filename string
 				}
 			}
 		} else {
-		       return err, nil
+		       return nil, err
 		}
-
+		fmt.Println("Images loaded.")
+		
 		c := ctx.Context{
 			Context: project.Context{
 				ComposeFiles: []string{composeFile},
