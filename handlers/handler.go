@@ -365,25 +365,6 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-	// result, err := exec.Command("sh", "-c", "systemctl is-active tpm2-abrmd | grep -o inactive | wc -l").Output()
-	// if err != nil {
-	// 	log.Printf("TPM test command finished with error: %v\n", err)
-	// 	response.Status = "FAIL"
-	// 	response.Error = err.Error()
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	json.NewEncoder(w).Encode(response)
-	// 	return
-	// }
-	// lineCount, err := strconv.Atoi(strings.Trim(string(result), "\n"))
-	// if err != nil {
-	// 	log.Printf("Error parsing result of TPM test (%s): %v\n", result, err)
-	// 	response.Status = "FAIL"
-	// 	response.Error = err.Error()
-	// 	w.WriteHeader(http.StatusInternalServerError)
-	// 	json.NewEncoder(w).Encode(response)
-	// 	return
-	// }
-	//hasTPM := lineCount == 0
 	hasTPM, err := utils.HasTPM2()
 	if err != nil {
 		log.Printf("Error while attempting to detect TPM2.0 presence: %v\n", err)

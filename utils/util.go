@@ -154,8 +154,6 @@ func Unpack(source io.Reader, target string, cfg config.Config) error {
 	}
 	defer topArchive.Close()
 	tarReader := tar.NewReader(topArchive)
-//	key, lockKeyName, getKeyErr := GetDecryptionKey(cfg)
-//	fmt.Println("  Found decryption key")
 	lockKeyName, getKeyErr := GetLockKeyName(cfg)
 	fmt.Println("  Package contents:")
 	for {
@@ -209,8 +207,6 @@ func Unpack(source io.Reader, target string, cfg config.Config) error {
 		return errors.New(errString)
 	} else if encryptedData != nil && lockkeyData != nil {
 		fmt.Println("  This is an encrypted package, decrypting...")
-		// lockkey & parse padding, key, and iv
-		//aesPadKeyIv, err := rsa.DecryptPKCS1v15(nil, key, lockkeyData)
 		unlockKeyCommand := fmt.Sprintf(DecryptOpensslCommandFmt, cfg.KeyLocation)
 		hasTPM, err := HasTPM2()
 		if err != nil {
@@ -224,11 +220,6 @@ func Unpack(source io.Reader, target string, cfg config.Config) error {
 			fmt.Println("  NO TPM FOUND, decrypting using openssl generated private key")
 		}
 		cmd := exec.Command("sh", "-c", unlockKeyCommand)
-		// outPipe, err := cmd.StdoutPipe()
-		// if err != nil {
-		// 	fmt.Printf("    Error decrypting lock key (get stdout): %s\n", err.Error)
-		// 	return err
-		// }
 		inPipe, err := cmd.StdinPipe()
 		if err != nil {
 			fmt.Printf("    Error decrypting lock key (get stdin): %s\n", err.Error)
