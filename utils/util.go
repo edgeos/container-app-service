@@ -18,7 +18,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
-
+	"strconv"
+	"strings"
+	"os/exec"
+	
 	"github.build.ge.com/PredixEdgeOS/container-app-service/config"
 )
 
@@ -29,6 +32,11 @@ var(
 	GzipExtension = ".gz"
 	LockKeyExtension = ".lockkey"
 	DecryptedLockKeyLength = 65
+	IvLength = 16
+	AesLength = 32
+	PadLength = 1
+	DecryptTPMCommandFmt = "openssl rsautl -decrypt -keyform engine -engine tpm2tss -inkey %s"
+	DecryptOpensslCommandFmt = "openssl rsautl -decrypt -inkey %s"
 )
 
 // NewUUID generates a random UUID according to RFC 4122
@@ -46,12 +54,23 @@ func NewUUID() (string, error) {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:]), nil
 }
 
+// return lock key name if available or empty string otherwise
+func GetLockKeyName(cfg config.Config) (string, error) {
+	if len(cfg.KeyName) == 0 {
+		return "", nil
+	}
+	nameBytes, err := ioutil.ReadFile(cfg.KeyName)
+	if err != nil {
+		fmt.Printf("Could not key name from file (%s): \n%v", cfg.KeyName, err)
+	}
+	return string(nameBytes), nil
+}
+
 // return decryption key if available
 func GetDecryptionKey(cfg config.Config) (*rsa.PrivateKey, string, error) {
-	//TODO: Don't get the key this way, this is for proof of concept
 	if len(cfg.KeyLocation) == 0 {
 		return nil, "", errors.New("Cannot get decryption key, no key configured")
-	}
+	}	
 	keyInfo, err := ioutil.ReadFile(cfg.KeyLocation)
 	// unpack key, binary format: [machine's lockkey name][null terminator][rsa key]
 	if err != nil {
@@ -105,10 +124,23 @@ func isEncryptedPackage(archive *gzip.Reader) (bool, error) {
 	return hasEncrypted, nil
 }
 
+func HasTPM2() (bool, error) {
+	result, err := exec.Command("sh", "-c", "systemctl is-active tpm2-abrmd | grep -o inactive | wc -l").Output()
+	if err != nil {
+		return false, err
+	}
+	lineCount, err := strconv.Atoi(strings.Trim(string(result), "\n"))
+	if err != nil {
+		return false, err
+	}
+	hasTPM := lineCount == 0
+	return hasTPM, nil
+}
+
 //Unpack package tarball
 // Expected Manifest:
 // <application_name>.tar.gz            (top level tarball)
- //   - MANIFEST.JSON                    (LTC parsable package info)
+//   - MANIFEST.JSON                    (LTC parsable package info)
 //   - <lockfile_name 0..n>.lockfile    (RSA encrypted symmetric key files, there are many... 1 per machine)
 //   - <application_name>.tar.gz<.enc>  (application payload - .enc indicates encrypted by symmetric key in .lockfile)
 func Unpack(source io.Reader, target string, cfg config.Config) error {
@@ -122,8 +154,9 @@ func Unpack(source io.Reader, target string, cfg config.Config) error {
 	}
 	defer topArchive.Close()
 	tarReader := tar.NewReader(topArchive)
-	key, lockKeyName, getKeyErr := GetDecryptionKey(cfg)
-	fmt.Println("  Found decryption key")
+//	key, lockKeyName, getKeyErr := GetDecryptionKey(cfg)
+//	fmt.Println("  Found decryption key")
+	lockKeyName, getKeyErr := GetLockKeyName(cfg)
 	fmt.Println("  Package contents:")
 	for {
 		header, err := tarReader.Next()
@@ -177,18 +210,52 @@ func Unpack(source io.Reader, target string, cfg config.Config) error {
 	} else if encryptedData != nil && lockkeyData != nil {
 		fmt.Println("  This is an encrypted package, decrypting...")
 		// lockkey & parse padding, key, and iv
-		aesPadKeyIv, err := rsa.DecryptPKCS1v15(nil, key, lockkeyData)
+		//aesPadKeyIv, err := rsa.DecryptPKCS1v15(nil, key, lockkeyData)
+		unlockKeyCommand := fmt.Sprintf(DecryptOpensslCommandFmt, cfg.KeyLocation)
+		hasTPM, err := HasTPM2()
 		if err != nil {
+			fmt.Printf("    Error determining if this device uses TPM2.0: %s\n", err.Error())
 			return err
 		}
-		if len(aesPadKeyIv) != DecryptedLockKeyLength {
-			errString := fmt.Sprintf("Error, decrypted padding, key, and iv length (%d) are not correct (expected %d)",
+		if hasTPM {
+			fmt.Println("  TPM2.0 Detected, decrypting using TPM locked private key")
+			unlockKeyCommand = fmt.Sprintf(DecryptTPMCommandFmt, cfg.KeyLocation)
+		} else {
+			fmt.Println("  NO TPM FOUND, decrypting using openssl generated private key")
+		}
+		cmd := exec.Command("sh", "-c", unlockKeyCommand)
+		// outPipe, err := cmd.StdoutPipe()
+		// if err != nil {
+		// 	fmt.Printf("    Error decrypting lock key (get stdout): %s\n", err.Error)
+		// 	return err
+		// }
+		inPipe, err := cmd.StdinPipe()
+		if err != nil {
+			fmt.Printf("    Error decrypting lock key (get stdin): %s\n", err.Error)
+			return err
+		}
+		go func() {
+			defer inPipe.Close()
+			inPipe.Write(lockkeyData)
+			//TODO: catch error from this somehow.  maybe w/ channel?
+		}()
+
+		aesPadKeyIv, err := cmd.Output()
+		if err != nil {
+			fmt.Printf("    Error decrypting lock key (command execution): %s\n", err.Error)
+			return err
+		}
+
+		actualDecryptedLen := len(aesPadKeyIv)
+		if actualDecryptedLen < DecryptedLockKeyLength {
+			errString := fmt.Sprintf("Error, decrypted padding, key, and iv length (%d) are not correct (expected >= %d)",
 				len(aesPadKeyIv), DecryptedLockKeyLength)
 			return errors.New(errString)
 		}
-		padding := aesPadKeyIv[16]
-		aesKeyBytes := aesPadKeyIv[17:49]
-		iv := aesPadKeyIv[49:65]
+		
+		padding := aesPadKeyIv[actualDecryptedLen - PadLength - AesLength - IvLength]
+		aesKeyBytes := aesPadKeyIv[actualDecryptedLen - AesLength - IvLength : actualDecryptedLen - IvLength]
+		iv := aesPadKeyIv[actualDecryptedLen - IvLength : actualDecryptedLen]
 		aesKey, err := aes.NewCipher(aesKeyBytes)
 		if err != nil {
 			return err

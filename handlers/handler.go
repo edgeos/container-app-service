@@ -12,8 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"io/ioutil"
-	"strconv"
-	"strings"
 	"fmt"
 
 	"github.com/gorilla/mux"
@@ -386,7 +384,7 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 	// 	return
 	// }
 	//hasTPM := lineCount == 0
-	hasTPM, err := hasTPM2()
+	hasTPM, err := utils.HasTPM2()
 	if err != nil {
 		log.Printf("Error while attempting to detect TPM2.0 presence: %v\n", err)
 		response.Status = "FAIL"
@@ -434,7 +432,12 @@ func (h *Handler) getKey(w http.ResponseWriter, r *http.Request) {
 	log.Println("Responding to request for public key from API")
 	if _, err := os.Stat(h.cfg.KeyLocation); err == nil {
 		genPubKeyCommand := fmt.Sprintf(GenOpensslPubKeyCommandFmt, h.cfg.KeyLocation)
-		hasTPM, err := hasTPM2()
+		hasTPM, err := utils.HasTPM2()
+		if err != nil {
+			log.Printf("TPM Detection returned an error: \n%v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: err.Error()})
+		}
 		if hasTPM {
 			log.Println("TPM detected, generating public key from TPM locked private key.")
 			genPubKeyCommand = fmt.Sprintf(GenTPMPubKeyCommandFmt, h.cfg.KeyLocation)
@@ -457,19 +460,6 @@ func (h *Handler) getKey(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: err.Error()})
 	}
-}
-
-func hasTPM2() (bool, error) {
-	result, err := exec.Command("sh", "-c", "systemctl is-active tpm2-abrmd | grep -o inactive | wc -l").Output()
-	if err != nil {
-		return false, err
-	}
-	lineCount, err := strconv.Atoi(strings.Trim(string(result), "\n"))
-	if err != nil {
-		return false, err
-	}
-	hasTPM := lineCount == 0
-	return hasTPM, nil
 }
 
 func setupServer(cfg config.Config) *http.Server {
