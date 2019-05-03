@@ -9,6 +9,12 @@ import (
 	"regexp"
 	"sync"
 	"time"
+	"os/exec"
+	"path/filepath"
+	"io/ioutil"
+	"strconv"
+	"strings"
+	"fmt"
 
 	"github.com/gorilla/mux"
 
@@ -26,12 +32,31 @@ const (
 	Running  = "Running"
 	Stopped  = "Stopped"
 	NoID     = "No ID in request"
+	GenTPMKeyCommandFmt = "tpm2tss-genkey -a rsa -s 2048 %s"
+	GenOpensslKeyCommandFmt = "openssl genrsa -out %s 2048"
+	GenTPMPubKeyCommandFmt = "openssl rsa -engine tpm2tss -inform engine -in %s -pubout -outform pem"
+	GenOpensslPubKeyCommandFmt = "openssl rsa -in %s -pubout -outform pem"
 )
+
+// key name body
+type KeyName struct {
+	Name string `json:"name"`
+}
 
 //BasicResponse ...
 type BasicResponse struct {
 	Status string `json:"status"`
 	Error  string `json:"error"`
+}
+
+//HasKeyResponse ...
+type HasKeyResponse struct {
+	HasKey bool `json:"hasKey"`
+}
+
+//PubKeyResponse ...
+type PubKeyResponse struct {
+	PubKey string `json:"pubKey"`
 }
 
 //DeployResponse ...
@@ -305,6 +330,148 @@ func (h *Handler) killApplication(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
+	response := BasicResponse{Status: Ok, Error: ""}
+	log.Println("Provisioning new decryption key!")
+	//todo: make key intead of touching a file
+
+	decoder := json.NewDecoder(r.Body)
+	var nameJson KeyName
+	err := decoder.Decode(&nameJson)
+	if err != nil {
+		log.Printf("Could not proccess request body:\n%v", err)
+		response.Status = "FAIL"
+		response.Error = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	var name = nameJson.Name
+
+	err = os.MkdirAll(filepath.Dir(h.cfg.KeyLocation), 0744)
+	if err != nil {
+		log.Printf("Could not create key directory (%s) due to error: \n%v\n",
+			filepath.Dir(h.cfg.KeyLocation), err)
+		response.Status = "FAIL"
+		response.Error = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	err = ioutil.WriteFile(h.cfg.KeyName, []byte(name), 0644)
+	if err != nil {
+		log.Printf("Failed writing key name to file (%s): %v\n", h.cfg.KeyName, err)
+		response.Status = "FAIL"
+		response.Error = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	// result, err := exec.Command("sh", "-c", "systemctl is-active tpm2-abrmd | grep -o inactive | wc -l").Output()
+	// if err != nil {
+	// 	log.Printf("TPM test command finished with error: %v\n", err)
+	// 	response.Status = "FAIL"
+	// 	response.Error = err.Error()
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	json.NewEncoder(w).Encode(response)
+	// 	return
+	// }
+	// lineCount, err := strconv.Atoi(strings.Trim(string(result), "\n"))
+	// if err != nil {
+	// 	log.Printf("Error parsing result of TPM test (%s): %v\n", result, err)
+	// 	response.Status = "FAIL"
+	// 	response.Error = err.Error()
+	// 	w.WriteHeader(http.StatusInternalServerError)
+	// 	json.NewEncoder(w).Encode(response)
+	// 	return
+	// }
+	//hasTPM := lineCount == 0
+	hasTPM, err := hasTPM2()
+	if err != nil {
+		log.Printf("Error while attempting to detect TPM2.0 presence: %v\n", err)
+		response.Status = "FAIL"
+		response.Error = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	genKeyCommand := fmt.Sprintf(GenOpensslKeyCommandFmt, h.cfg.KeyLocation)
+	if hasTPM {
+		log.Println("TPM detected, locking private key with TPM")
+		genKeyCommand = fmt.Sprintf(GenTPMKeyCommandFmt, h.cfg.KeyLocation)
+	} else {
+		log.Println("NO TPM FOUND, generating private key using openssl tools")
+	}
+	cmd := exec.Command("sh", "-c", genKeyCommand)
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Error generating private key: \n%v",  err)
+		response.Status = "FAIL"
+		response.Error = err.Error()
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) hasKey(w http.ResponseWriter, r *http.Request) {
+	log.Println("Checking if key has been generated due to API request")
+	if _, err := os.Stat(h.cfg.KeyLocation); err == nil {
+		log.Println("  Have key")
+		json.NewEncoder(w).Encode(HasKeyResponse{HasKey: true})
+	} else if os.IsNotExist(err) {
+		log.Println("  Do not have key")
+		json.NewEncoder(w).Encode(HasKeyResponse{HasKey: false})
+	} else {
+		log.Printf("hasKey returned an error: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: err.Error()})
+	}
+}
+
+func (h *Handler) getKey(w http.ResponseWriter, r *http.Request) {
+	log.Println("Responding to request for public key from API")
+	if _, err := os.Stat(h.cfg.KeyLocation); err == nil {
+		genPubKeyCommand := fmt.Sprintf(GenOpensslPubKeyCommandFmt, h.cfg.KeyLocation)
+		hasTPM, err := hasTPM2()
+		if hasTPM {
+			log.Println("TPM detected, generating public key from TPM locked private key.")
+			genPubKeyCommand = fmt.Sprintf(GenTPMPubKeyCommandFmt, h.cfg.KeyLocation)
+		} else {
+			log.Printf("NO TPM FOUND, generating public key from openssl generated private key.")
+		}
+		pubKeyBytes, err := exec.Command("sh", "-c", genPubKeyCommand).Output()
+		if err != nil {
+			log.Printf("Error generating public key: \n%v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: err.Error()})			
+		}
+		json.NewEncoder(w).Encode(PubKeyResponse{PubKey: string(pubKeyBytes)})
+	} else if os.IsNotExist(err) {
+		log.Printf("getKey returned an error: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: "Key does not exist"})
+	} else {
+		log.Printf("getKey returned an error: %s", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(BasicResponse{Status: Fail, Error: err.Error()})
+	}
+}
+
+func hasTPM2() (bool, error) {
+	result, err := exec.Command("sh", "-c", "systemctl is-active tpm2-abrmd | grep -o inactive | wc -l").Output()
+	if err != nil {
+		return false, err
+	}
+	lineCount, err := strconv.Atoi(strings.Trim(string(result), "\n"))
+	if err != nil {
+		return false, err
+	}
+	hasTPM := lineCount == 0
+	return hasTPM, nil
+}
+
 func setupServer(cfg config.Config) *http.Server {
 	handler := NewHandler(cfg)
 	router := mux.NewRouter()
@@ -321,7 +488,9 @@ func setupServer(cfg config.Config) *http.Server {
 	router.HandleFunc("/application/purge/{id}", handler.purgeApplication).Methods("POST")
 	router.HandleFunc("/application/purge-persistent/{name}", handler.purgePersistentApplication).Methods("POST")
 	router.HandleFunc("/application/kill/{id}", handler.killApplication).Methods("POST")
-
+	router.HandleFunc("/provision/createKey", handler.createKey).Methods("POST")
+	router.HandleFunc("/provision/hasKey", handler.hasKey).Methods("GET")
+	router.HandleFunc("/provision/getKey", handler.getKey).Methods("GET")
 	server := &http.Server{
 		Handler:      router,
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Second,
