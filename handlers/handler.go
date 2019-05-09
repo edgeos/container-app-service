@@ -331,7 +331,6 @@ func (h *Handler) killApplication(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 	response := BasicResponse{Status: Ok, Error: ""}
 	log.Println("Provisioning new decryption key!")
-	//todo: make key intead of touching a file
 
 	decoder := json.NewDecoder(r.Body)
 	var nameJson KeyName
