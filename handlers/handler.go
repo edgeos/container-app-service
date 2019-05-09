@@ -336,7 +336,7 @@ func (h *Handler) createKey(w http.ResponseWriter, r *http.Request) {
 	var nameJson KeyName
 	err := decoder.Decode(&nameJson)
 	if err != nil {
-		log.Printf("Could not proccess request body:\n%v", err)
+		log.Printf("Could not process request body:\n%v", err)
 		response.Status = "FAIL"
 		response.Error = err.Error()
 		w.WriteHeader(http.StatusInternalServerError)
