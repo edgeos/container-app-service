@@ -3,7 +3,9 @@
     "data_volume": "/mnt/data",
     "read_timeout": 30,
     "write_timeout:": 30,
-
+    "key": "/mnt/data/key/key",
+    "key_name": "/mnt/data/key/key_name",
+    
     "Docker":
     {
         "endpoint": "unix://var/run/docker.sock",
