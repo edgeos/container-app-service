@@ -34,6 +34,9 @@ ARCH ?= amd64
 #VERSION := $(shell git describe --tags --always --dirty)
 VERSION := 1.0.0
 
+# Git commit
+GITCOMMIT := $(shell git rev-parse HEAD)
+
 # Modules and app/service
 APP := agent
 SUBMODULES := config handlers provider types utils
@@ -134,8 +137,8 @@ fetch-deps: build-dirs .builder-$(ARCH)
 		-w /go/src/$(PKG)                                                  \
 		$(NAME)-$(ARCH):builder                                            \
 		/bin/sh -c "                                                       \
-		        INSTALL_DEPS=$(INSTALL_DEPS)                               \
-			./scripts/fetch-deps.sh                                    \
+			INSTALL_DEPS=$(INSTALL_DEPS)                                   \
+			./scripts/fetch-deps.sh                                        \
 		"
 	@echo "fetch-deps: Build Success"
 
@@ -157,7 +160,8 @@ bin/$(ARCH)/$(NAME): fetch-deps
 			ARCH=$(ARCH)                                                   \
 			VERSION=$(VERSION)                                             \
 			PKG=$(PKG)                                                     \
-			NAME=$(NAME)												   \
+			NAME=$(NAME)                                                   \
+			GITCOMMIT=$(GITCOMMIT)                                         \
 			./scripts/build.sh $(APP)                                      \
 		"
 
